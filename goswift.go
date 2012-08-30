@@ -210,18 +210,18 @@ func readJson(resp *http.Response, result interface{}) error {
 /* ------------------------------------------------------------ */
 
 type ListContainersOpts struct {
-	limit  int    // For an integer value n, limits the number of results to at most n values.
-	marker string // Given a string value x, return object names greater in value than the specified marker.
+	Limit  int    // For an integer value n, limits the number of results to at most n values.
+	Marker string // Given a string value x, return object names greater in value than the specified marker.
 }
 
 func (opts *ListContainersOpts) parse() url.Values {
 	v := url.Values{}
 	if opts != nil {
-		if opts.limit > 0 {
-			v.Set("limit", strconv.Itoa(opts.limit))
+		if opts.Limit > 0 {
+			v.Set("limit", strconv.Itoa(opts.Limit))
 		}
-		if opts.marker != "" {
-			v.Set("marker", opts.marker)
+		if opts.Marker != "" {
+			v.Set("marker", opts.Marker)
 		}
 	}
 	return v
@@ -273,28 +273,31 @@ func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerIn
 /* ------------------------------------------------------------ */
 
 type ListObjectsOpts struct {
-	limit int // For an integer value n, limits the number of results to at most n values.
-
-	marker string // Given a string value x, return object names greater in value than the  specified marker.
-
-	prefix string // For a string value x, causes the results to be limited to object names beginning with the substring x.
-
-	path string // For a string value x, return the object names nested in the pseudo path
-
-	delimiter rune // For a character c, return all the object names nested in the container
-
+	Limit int	// For an integer value n, limits the number of results to at most n values.
+	Marker string	// Given a string value x, return object names greater in value than the  specified marker.
+	Prefix string	// For a string value x, causes the results to be limited to object names beginning with the substring x.
+	Path string	// For a string value x, return the object names nested in the pseudo path
+	Delimiter rune	// For a character c, return all the object names nested in the container
 }
 
 func (opts *ListObjectsOpts) parse() url.Values {
 	v := url.Values{}
 	if opts != nil {
-		if opts.limit > 0 {
-			v.Set("limit", strconv.Itoa(opts.limit))
+		if opts.Limit > 0 {
+			v.Set("limit", strconv.Itoa(opts.Limit))
 		}
-		if opts.marker != "" {
-			v.Set("marker", opts.marker)
+		if opts.Marker != "" {
+			v.Set("marker", opts.Marker)
 		}
-		// FIXME more options to add
+		if opts.Prefix != "" {
+			v.Set("prefix", opts.Prefix)
+		}
+		if opts.Path != "" {
+			v.Set("path", opts.Path)
+		}
+		if opts.Delimiter != 0 {
+			v.Set("delimiter", string(opts.Delimiter))
+		}
 	}
 	return v
 }
@@ -318,11 +321,11 @@ func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]str
 
 // Information about a container
 type ObjectInfo struct {
-	Name         string // object name
-	ContentType  string `json:"content_type"` // eg application/directory
-	Bytes        int64  // size in bytes
+	Name         string `json:"name"`          // object name
+	ContentType  string `json:"content_type"`  // eg application/directory
+	Bytes        int64  `json:"bytes"`	   // size in bytes
 	LastModified string `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680'
-	Hash         string // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
+	Hash         string `json:"hash"`          // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
 }
 
 // Return a list of structures with container info
