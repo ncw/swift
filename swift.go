@@ -24,12 +24,10 @@ const (
 	USER_AGENT = "goswift/1.0"
 )
 
-// curl -v -H 'X-Storage-User: admin:admin' -H 'X-Storage-Pass: admin' http://10.10.10.2:8080/auth/v1.0
-
 type Connection struct {
-	username    string
-	api_key     string
-	authurl     string
+	UserName    string
+	ApiKey     string
+	AuthUrl     string
 	storage_url string
 	auth_token  string
 }
@@ -77,13 +75,13 @@ func (c *Connection) Authenticate() error {
 		//		CheckRedirect: redirectPolicyFunc,
 		Transport: tr,
 	}
-	req, err := http.NewRequest("GET", c.authurl, nil)
+	req, err := http.NewRequest("GET", c.AuthUrl, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", USER_AGENT)
-	req.Header.Set("X-Auth-Key", c.api_key)
-	req.Header.Set("X-Auth-User", c.username)
+	req.Header.Set("X-Auth-Key", c.ApiKey)
+	req.Header.Set("X-Auth-User", c.UserName)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
