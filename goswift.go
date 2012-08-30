@@ -207,22 +207,32 @@ func readJson(resp *http.Response, result interface{}) error {
 	return decoder.Decode(result)
 }
 
-// Return a deferred to receive the list of names of containers
-//
-//    limit     For an integer value n, limits the number of results to at most n values.
-//	
-//    marker    Given a string value x, return object names greater in value than the specified marker.
+/* ------------------------------------------------------------ */
+
+type ListContainersOpts struct {
+	limit  int    // For an integer value n, limits the number of results to at most n values.
+	marker string // Given a string value x, return object names greater in value than the specified marker.
+}
+
+func (opts *ListContainersOpts) parse() url.Values {
+	v := url.Values{}
+	if opts != nil {
+		if opts.limit > 0 {
+			v.Set("limit", strconv.Itoa(opts.limit))
+		}
+		if opts.marker != "" {
+			v.Set("marker", opts.marker)
+		}
+	}
+	return v
+}
+
+// Return a list of names of containers
 //
 //            ['test', 'test2']
 
-func (c *Connection) ListContainers(limit int, marker string) ([]string, error) {
-	v := url.Values{}
-	if limit > 0 {
-		v.Set("limit", strconv.Itoa(limit))
-	}
-	if marker != "" {
-		v.Set("marker", marker)
-	}
+func (c *Connection) ListContainers(opts *ListContainersOpts) ([]string, error) {
+	v := opts.parse()
 	resp, err := c.storage(storageParams{
 		operation:  "GET",
 		parameters: v,
@@ -233,33 +243,20 @@ func (c *Connection) ListContainers(limit int, marker string) ([]string, error) 
 	return readLines(resp)
 }
 
-
 // Information about a container
 type ContainerInfo struct {
-	Name string
+	Name  string
 	Count int64
 	Bytes int64
 }
 
-// Return a deferred to receive the list of dictionaries with container info
-// 
-//     limit     For an integer value n, limits the number of results to at most n values.
-// 
-//     marker    Given a string value x, return object names greater in value than the
-//               specified marker.
+// Return a list of structures with container info
 // 
 //             [{u'bytes': 315575604, u'count': 1015, u'name': u'test'},
 //              {u'bytes': 0, u'count': 1, u'name': u'test2'}]
 
-func (c *Connection) ListContainersInfo(limit int, marker string) ([]ContainerInfo, error) {
-	// FIXME factor ListConatiners
-	v := url.Values{}
-	if limit > 0 {
-		v.Set("limit", strconv.Itoa(limit))
-	}
-	if marker != "" {
-		v.Set("marker", marker)
-	}
+func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerInfo, error) {
+	v := opts.parse()
 	v.Set("format", "json")
 	resp, err := c.storage(storageParams{
 		operation:  "GET",
@@ -273,6 +270,82 @@ func (c *Connection) ListContainersInfo(limit int, marker string) ([]ContainerIn
 	return containers, err
 }
 
+/* ------------------------------------------------------------ */
+
+type ListObjectsOpts struct {
+	limit int // For an integer value n, limits the number of results to at most n values.
+
+	marker string // Given a string value x, return object names greater in value than the  specified marker.
+
+	prefix string // For a string value x, causes the results to be limited to object names beginning with the substring x.
+
+	path string // For a string value x, return the object names nested in the pseudo path
+
+	delimiter rune // For a character c, return all the object names nested in the container
+
+}
+
+func (opts *ListObjectsOpts) parse() url.Values {
+	v := url.Values{}
+	if opts != nil {
+		if opts.limit > 0 {
+			v.Set("limit", strconv.Itoa(opts.limit))
+		}
+		if opts.marker != "" {
+			v.Set("marker", opts.marker)
+		}
+		// FIXME more options to add
+	}
+	return v
+}
+
+// Return a list of names of containers
+//
+//            ['test', 'test2']
+
+func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]string, error) {
+	v := opts.parse()
+	resp, err := c.storage(storageParams{
+		container:  container,
+		operation:  "GET",
+		parameters: v,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return readLines(resp)
+}
+
+// Information about a container
+type ObjectInfo struct {
+	Name         string // object name
+	ContentType  string `json:"content_type"` // eg application/directory
+	Bytes        int64  // size in bytes
+	LastModified string `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680'
+	Hash         string // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
+}
+
+// Return a list of structures with container info
+// 
+//             [{u'bytes': 315575604, u'count': 1015, u'name': u'test'},
+//              {u'bytes': 0, u'count': 1, u'name': u'test2'}]
+
+func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([]ObjectInfo, error) {
+	v := opts.parse()
+	v.Set("format", "json")
+	resp, err := c.storage(storageParams{
+		container:  container,
+		operation:  "GET",
+		parameters: v,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var containers []ObjectInfo
+	err = readJson(resp, &containers)
+	// FIXME convert the dates!
+	return containers, err
+}
 
 func main() {
 	c := Connection{
@@ -285,8 +358,13 @@ func main() {
 		panic(err)
 	}
 	fmt.Println(c)
-	containers, err := c.ListContainers(0, "")
+	containers, err := c.ListContainers(nil)
 	fmt.Println(containers, err)
-	containerinfos, err2 := c.ListContainersInfo(0, "")
+	containerinfos, err2 := c.ListContainersInfo(nil)
 	fmt.Println(containerinfos, err2)
+
+	container, err3 := c.ListObjects("SquirrelSave", nil)
+	fmt.Println(container, err3)
+	containerinfo, err4 := c.ListObjectsInfo("SquirrelSave", nil)
+	fmt.Println(containerinfo, err4)
 }
