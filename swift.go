@@ -32,32 +32,40 @@ type Connection struct {
 	auth_token  string
 }
 
-/*
-// Mappings for authentication errors
-_auth_error_map = {
-    401 : AuthorizationFailed,
-}
+type errorMap map[int]error
+var (
+	// Custom Errors
+	AuthorizationFailed = errors.New("Authorization Failed")
+	ContainerNotFound = errors.New("Container Not Found")
+	ContainerNotEmpty = errors.New("Container Not Empty")
+	ObjectNotFound = errors.New("Object Not Found")
+	ObjectCorrupted = errors.New("Object Corrupted")
+	
+	// Mappings for authentication errors
+	authErrorMap = errorMap{
+		401 : AuthorizationFailed,
+	}
 
-// Mappings for container errors
-_container_error_map = {
-    404 : ContainerNotFound,
-    409 : ContainerNotEmpty,
-}
+	// Mappings for container errors
+	containerErrorMap = errorMap{
+		404 : ContainerNotFound,
+		409 : ContainerNotEmpty,
+	}
 
-// Mappings for object errors
-_object_error_map = {
-    404 : ObjectNotFound,
-    422 : ObjectCorrupted,
-}
-*/
+	// Mappings for object errors
+	objectErrorMap = errorMap{
+		404 : ObjectNotFound,
+		422 : ObjectCorrupted,
+	}
+)	
 
 // Check a response for errors and translate into standard errors if necessary
-// FIXME error map
-func (c *Connection) parseHeaders(resp *http.Response) error {
-	// if error_map:
-	//     e = error_map.get(response.code)
-	//     if e is not None:
-	//         raise e()
+func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error {
+	if errorMap != nil {
+		if err, ok := errorMap[resp.StatusCode]; ok {
+			return err
+		}
+	}
 	// FIXME convert date header here?
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return errors.New(fmt.Sprintf("HTTP Error: %d: %s", resp.StatusCode, resp.Status))
@@ -87,7 +95,7 @@ func (c *Connection) Authenticate() error {
 		return err
 	}
 	defer resp.Body.Close()
-	if err := c.parseHeaders(resp); err != nil {
+	if err := c.parseHeaders(resp, authErrorMap); err != nil {
 		return err
 	}
 	c.storage_url = resp.Header.Get("X-Storage-Url")
@@ -110,7 +118,9 @@ func (c *Connection) Authenticated() bool {
 // container is the name of a container
 // Any other parameters (if not None) are added to the storage url
 
-// Returns a response or an error.  If response is returned then resp.Body.Close() must be called on it
+// Returns a response or an error.  If response is returned then
+// resp.Body.Close() must be called on it, unless noBody is set in
+// which case the body will be closed in this function
 
 type storageParams struct {
 	container   string
@@ -118,6 +128,8 @@ type storageParams struct {
 	operation   string
 	parameters  url.Values
 	headers     map[string]string
+	errorMap    errorMap
+	noBody      bool
 	// body=None
 }
 
@@ -163,11 +175,13 @@ func (c *Connection) storage(p storageParams) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.parseHeaders(resp); err != nil {
+	if err := c.parseHeaders(resp, p.errorMap); err != nil {
 		resp.Body.Close()
 		return nil, err
 	}
-	// FIXME must do something with resp.Body.Close
+	if p.noBody {
+		resp.Body.Close()
+	}
 	return resp, nil
 }
 
@@ -234,6 +248,7 @@ func (c *Connection) ListContainers(opts *ListContainersOpts) ([]string, error) 
 	resp, err := c.storage(storageParams{
 		operation:  "GET",
 		parameters: v,
+		errorMap: containerErrorMap,
 	})
 	if err != nil {
 		return nil, err
@@ -259,6 +274,7 @@ func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerIn
 	resp, err := c.storage(storageParams{
 		operation:  "GET",
 		parameters: v,
+		errorMap: containerErrorMap,
 	})
 	if err != nil {
 		return nil, err
@@ -310,6 +326,7 @@ func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]str
 		container:  container,
 		operation:  "GET",
 		parameters: v,
+		errorMap: containerErrorMap,
 	})
 	if err != nil {
 		return nil, err
@@ -338,6 +355,7 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 		container:  container,
 		operation:  "GET",
 		parameters: v,
+		errorMap: containerErrorMap,
 	})
 	if err != nil {
 		return nil, err
@@ -348,3 +366,74 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 	return containers, err
 }
 
+type AccountInfo struct {
+	BytesUsed int64		// total number of bytes used
+	Containers int64	// total number of containers
+	Objects int64		// total number of objects
+}
+
+// Helper function to decode int64 from header
+func getInt64FromHeader(resp *http.Response, header string) (result int64, err error) {
+	value := resp.Header.Get(header)
+	result, err = strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Bad Header '%s': '%s': %s", header, value, err))
+	}
+	return
+}
+
+// Return info about the account
+//
+// {'bytes_used': 316598182, 'container_count': 4, 'object_count': 1433}
+func (c * Connection) AccountInfo() (info AccountInfo, err error) {
+	var resp *http.Response
+	resp, err = c.storage(storageParams{
+		operation:  "HEAD",
+		errorMap: containerErrorMap,
+		noBody: true,
+	})
+	if err != nil {
+		return
+	}
+        // Parse the headers into a dict
+        //
+        //    {'Accept-Ranges': 'bytes',
+        //     'Content-Length': '0',
+        //     'Date': 'Tue, 05 Jul 2011 16:37:06 GMT',
+        //     'X-Account-Bytes-Used': '316598182',
+        //     'X-Account-Container-Count': '4',
+        //     'X-Account-Object-Count': '1433'}
+	// FIXME very wordy
+	if info.BytesUsed, err = getInt64FromHeader(resp, "X-Account-Bytes-Used"); err != nil {
+		return
+	}
+	if info.Containers, err = getInt64FromHeader(resp, "X-Account-Container-Count"); err != nil {
+		return
+	}
+	if info.Objects, err = getInt64FromHeader(resp, "X-Account-Object-Count"); err != nil {
+		return
+	}
+	return
+}
+
+// Create the container.  No error is returned if it already exists.
+func (c *Connection) CreateContainer(container string) error {
+	_, err := c.storage(storageParams{
+		container:  container,
+		operation:  "PUT",
+		errorMap: containerErrorMap,
+		noBody: true,
+	})
+	return err
+}
+
+// Delete the container. May return ContainerDoesNotExist or ContainerNotEmpty
+func (c *Connection) DeleteContainer(container string) error {
+	_, err := c.storage(storageParams{
+		container:  container,
+		operation:  "DELETE",
+		errorMap: containerErrorMap,
+		noBody: true,
+	})
+	return err
+}
