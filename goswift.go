@@ -5,7 +5,7 @@ FIXME need to implement the fixed errors so can distinguish not found etc
 
 */
 
-package main
+package swift
 
 import (
 	"bufio"
@@ -350,24 +350,3 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 	return containers, err
 }
 
-func main() {
-	c := Connection{
-		username: "username",
-		api_key:  "api_key",
-		authurl:  "authurl",
-	}
-	err := c.Authenticate()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(c)
-	containers, err := c.ListContainers(nil)
-	fmt.Println(containers, err)
-	containerinfos, err2 := c.ListContainersInfo(nil)
-	fmt.Println(containerinfos, err2)
-
-	container, err3 := c.ListObjects("SquirrelSave", nil)
-	fmt.Println(container, err3)
-	containerinfo, err4 := c.ListObjectsInfo("SquirrelSave", nil)
-	fmt.Println(containerinfo, err4)
-}
