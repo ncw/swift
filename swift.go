@@ -5,6 +5,8 @@ FIXME need to implement the fixed errors so can distinguish not found etc
 
 FIXME return body close errors
 
+FIXME rename to go-swift to match user agent string
+
 */
 
 package swift
