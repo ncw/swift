@@ -3,6 +3,8 @@ Use Swift / Openstack Object Storage / Rackspace cloud files from GO
 
 FIXME need to implement the fixed errors so can distinguish not found etc
 
+FIXME return body close errors
+
 */
 
 package swift
@@ -122,6 +124,8 @@ func (c *Connection) Authenticated() bool {
 // resp.Body.Close() must be called on it, unless noBody is set in
 // which case the body will be closed in this function
 
+// FIXME make noBody check for 204?
+
 type storageParams struct {
 	container   string
 	object_name string
@@ -180,7 +184,10 @@ func (c *Connection) storage(p storageParams) (*http.Response, error) {
 		return nil, err
 	}
 	if p.noBody {
-		resp.Body.Close()
+		err := resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return resp, nil
 }
@@ -258,9 +265,9 @@ func (c *Connection) ListContainers(opts *ListContainersOpts) ([]string, error) 
 
 // Information about a container
 type ContainerInfo struct {
-	Name  string
-	Count int64
-	Bytes int64
+	Name  string		// Name of the container
+	Count int64		// Number of objects in the container
+	Bytes int64		// Total number of bytes used in the container
 }
 
 // Return a list of structures with container info
@@ -416,6 +423,8 @@ func (c * Connection) AccountInfo() (info AccountInfo, err error) {
 	return
 }
 
+// FIXME Make a container struct so these could be methods on it?
+
 // Create the container.  No error is returned if it already exists.
 func (c *Connection) CreateContainer(container string) error {
 	_, err := c.storage(storageParams{
@@ -436,4 +445,28 @@ func (c *Connection) DeleteContainer(container string) error {
 		noBody: true,
 	})
 	return err
+}
+
+// Returns info about a single container
+func (c *Connection) ContainerInfo(container string) (info ContainerInfo, err error) {
+	var resp *http.Response
+	resp, err = c.storage(storageParams{
+		container:  container,
+		operation:  "HEAD",
+		errorMap: containerErrorMap,
+		noBody: true,
+	})
+	if err != nil {
+		return
+	}
+	// FIXME wordy
+	// Parse the headers into the struct
+	info.Name = container
+	if info.Bytes, err = getInt64FromHeader(resp, "X-Container-Bytes-Used"); err != nil {
+		return
+	}
+	if info.Count, err = getInt64FromHeader(resp, "X-Container-Object-Count"); err != nil {
+		return
+	}
+	return
 }
