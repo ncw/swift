@@ -7,6 +7,15 @@ FIXME return body close errors
 
 FIXME rename to go-swift to match user agent string
 
+FIXME use persistent http connections?
+
+FIXME reconnect on auth error - 403 when token expires
+
+FIXME implement read all files / containers which uses limit and marker to loop
+
+FIXME make more api compatible with python cloudfiles?
+
+FIXME timeout?
 */
 
 package swift
@@ -27,6 +36,7 @@ import (
 
 const (
 	USER_AGENT = "goswift/1.0"
+	DEFAULT_RETRIES = 3
 )
 
 type Connection struct {
@@ -123,6 +133,12 @@ func (c *Connection) Authenticate() (err error) {
 	return nil
 }
 
+// Removes the authentication
+func (c *Connection) UnAuthenticate() {
+	c.storage_url = ""
+	c.auth_token = ""
+}
+
 // A boolean to show if the current connection is authenticated
 //
 // Doesn't actually check the credentials
@@ -141,6 +157,9 @@ func (c *Connection) Authenticated() bool {
 
 // FIXME make noResponse check for 204?
 
+// This will Authenticate if necessary, and re-authenticate if it
+// receives a 403 error which means the token has expired
+
 type storageParams struct {
 	container   string
 	object_name string
@@ -150,60 +169,80 @@ type storageParams struct {
 	errorMap    errorMap
 	noResponse  bool
 	body        io.Reader
+	retries     int
 }
 
-func (c *Connection) storage(p storageParams) (*http.Response, error) {
-	if !c.Authenticated() {
-		return nil, errors.New("Not logged in")
+func (c *Connection) storage(p storageParams) (resp *http.Response, err error) {
+	retries := p.retries
+	if retries == 0 {
+		retries = DEFAULT_RETRIES
 	}
-	url := c.storage_url
-	if p.container != "" {
-		url += "/" + p.container
-		if p.object_name != "" {
-			url += "/" + p.object_name
+	for {
+		if !c.Authenticated() {
+			err = c.Authenticate()
+			if err != nil {
+				return
+			}
+		}
+		url := c.storage_url
+		if p.container != "" {
+			url += "/" + p.container
+			if p.object_name != "" {
+				url += "/" + p.object_name
+			}
+		}
+		if p.parameters != nil {
+			encoded := p.parameters.Encode()
+			if encoded != "" {
+				url += "?" + encoded
+			}
+		}
+		tr := &http.Transport{
+		//		TLSClientConfig:    &tls.Config{RootCAs: pool},
+		//		DisableCompression: true,
+		}
+		client := &http.Client{
+			//		CheckRedirect: redirectPolicyFunc,
+			Transport: tr,
+		}
+		var req *http.Request
+		req, err = http.NewRequest(p.operation, url, p.body)
+		if err != nil {
+			return
+		}
+		if p.headers != nil {
+			for k, v := range p.headers {
+				req.Header.Add(k, v)
+			}
+		}
+		req.Header.Add("User-Agent", USER_AGENT)
+		req.Header.Add("X-Auth-Token", c.auth_token)
+		// FIXME body of request?
+		resp, err = client.Do(req)
+		if err != nil {
+			return
+		}
+		// Check to see if token has expired
+		if resp.StatusCode == 403 && retries > 0 {
+			_ = resp.Body.Close()
+			c.UnAuthenticate()
+			retries--
+		} else {
+			break
 		}
 	}
-	if p.parameters != nil {
-		encoded := p.parameters.Encode()
-		if encoded != "" {
-			url += "?" + encoded
-		}
-	}
-	tr := &http.Transport{
-	//		TLSClientConfig:    &tls.Config{RootCAs: pool},
-	//		DisableCompression: true,
-	}
-	client := &http.Client{
-		//		CheckRedirect: redirectPolicyFunc,
-		Transport: tr,
-	}
-	req, err := http.NewRequest(p.operation, url, p.body)
-	if err != nil {
-		return nil, err
-	}
-	if p.headers != nil {
-		for k, v := range p.headers {
-			req.Header.Add(k, v)
-		}
-	}
-	req.Header.Add("User-Agent", USER_AGENT)
-	req.Header.Add("X-Auth-Token", c.auth_token)
-	// FIXME body of request?
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.parseHeaders(resp, p.errorMap); err != nil {
+
+	if err = c.parseHeaders(resp, p.errorMap); err != nil {
 		_ = resp.Body.Close()
 		return nil, err
 	}
 	if p.noResponse {
-		err := resp.Body.Close()
+		err = resp.Body.Close()
 		if err != nil {
 			return nil, err
 		}
 	}
-	return resp, nil
+	return
 }
 
 // Read the response into an array of strings
