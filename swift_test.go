@@ -48,9 +48,12 @@ func TestMain(t *testing.T) {
 
 	fmt.Println("Create", c.CreateObjectString("sausage", "test_object", "12345", ""))
 	fmt.Println(c.GetObjectString("sausage", "test_object"))
+	fmt.Println(c.GetObjectString("sausage", "test_object"))
+	fmt.Println("delete 1", c.DeleteObject("sausage", "test_object"))
+	fmt.Println("delete 2", c.DeleteObject("sausage", "test_object"))
 
-	fmt.Println(c.DeleteContainer("sausage"))
-	fmt.Println(c.DeleteContainer("sausage"))
+	fmt.Println("delete container 1", c.DeleteContainer("sausage"))
+	fmt.Println("delete container again", c.DeleteContainer("sausage"))
 	fmt.Println(c.ContainerInfo("SquirrelSave"))
 
 }

@@ -657,3 +657,15 @@ func (c *Connection) GetObjectString(container string, objectName string) (conte
 	contents = buf.String()
 	return
 }
+
+// Delete the object.  Calls errback if it doesn't exist with
+// ObjectDoesNotExist
+func (c *Connection) DeleteObject(container string, objectName string) (error) {
+	_, err := c.storage(storageParams{
+		container:   container,
+		object_name: objectName,
+		operation:   "DELETE",
+		errorMap:    objectErrorMap,
+	})
+	return err
+}
