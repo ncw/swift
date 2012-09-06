@@ -13,15 +13,16 @@ package swift
 
 import (
 	"bufio"
+	"bytes"
+	"crypto/md5"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
-	//	"strings"
-	"bytes"
-	"encoding/json"
+	"strings"
 )
 
 const (
@@ -30,38 +31,48 @@ const (
 
 type Connection struct {
 	UserName    string
-	ApiKey     string
+	ApiKey      string
 	AuthUrl     string
 	storage_url string
 	auth_token  string
 }
 
 type errorMap map[int]error
+
 var (
 	// Custom Errors
 	AuthorizationFailed = errors.New("Authorization Failed")
-	ContainerNotFound = errors.New("Container Not Found")
-	ContainerNotEmpty = errors.New("Container Not Empty")
-	ObjectNotFound = errors.New("Object Not Found")
-	ObjectCorrupted = errors.New("Object Corrupted")
-	
+	ContainerNotFound   = errors.New("Container Not Found")
+	ContainerNotEmpty   = errors.New("Container Not Empty")
+	ObjectNotFound      = errors.New("Object Not Found")
+	ObjectCorrupted     = errors.New("Object Corrupted")
+
 	// Mappings for authentication errors
 	authErrorMap = errorMap{
-		401 : AuthorizationFailed,
+		401: AuthorizationFailed,
 	}
 
 	// Mappings for container errors
 	containerErrorMap = errorMap{
-		404 : ContainerNotFound,
-		409 : ContainerNotEmpty,
+		404: ContainerNotFound,
+		409: ContainerNotEmpty,
 	}
 
 	// Mappings for object errors
 	objectErrorMap = errorMap{
-		404 : ObjectNotFound,
-		422 : ObjectCorrupted,
+		404: ObjectNotFound,
+		422: ObjectCorrupted,
 	}
-)	
+)
+
+// Utility function used to check the return from Close in a defer
+// statement
+func checkClose(c io.Closer, err *error) {
+	cerr := c.Close()
+	if *err == nil {
+		*err = cerr
+	}
+}
 
 // Check a response for errors and translate into standard errors if necessary
 func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error {
@@ -78,7 +89,7 @@ func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error 
 }
 
 // Connects to the cloud storage system
-func (c *Connection) Authenticate() error {
+func (c *Connection) Authenticate() (err error) {
 	tr := &http.Transport{
 	//		TLSClientConfig:    &tls.Config{RootCAs: pool},
 	//		DisableCompression: true,
@@ -87,20 +98,22 @@ func (c *Connection) Authenticate() error {
 		//		CheckRedirect: redirectPolicyFunc,
 		Transport: tr,
 	}
-	req, err := http.NewRequest("GET", c.AuthUrl, nil)
+	var req *http.Request
+	req, err = http.NewRequest("GET", c.AuthUrl, nil)
 	if err != nil {
-		return err
+		return
 	}
 	req.Header.Set("User-Agent", USER_AGENT)
 	req.Header.Set("X-Auth-Key", c.ApiKey)
 	req.Header.Set("X-Auth-User", c.UserName)
-	resp, err := client.Do(req)
+	var resp *http.Response
+	resp, err = client.Do(req)
 	if err != nil {
-		return err
+		return
 	}
-	defer resp.Body.Close()
-	if err := c.parseHeaders(resp, authErrorMap); err != nil {
-		return err
+	defer checkClose(resp.Body, &err)
+	if err = c.parseHeaders(resp, authErrorMap); err != nil {
+		return
 	}
 	c.storage_url = resp.Header.Get("X-Storage-Url")
 	c.auth_token = resp.Header.Get("X-Auth-Token")
@@ -123,10 +136,10 @@ func (c *Connection) Authenticated() bool {
 // Any other parameters (if not None) are added to the storage url
 
 // Returns a response or an error.  If response is returned then
-// resp.Body.Close() must be called on it, unless noBody is set in
+// resp.Body.Close() must be called on it, unless noResponse is set in
 // which case the body will be closed in this function
 
-// FIXME make noBody check for 204?
+// FIXME make noResponse check for 204?
 
 type storageParams struct {
 	container   string
@@ -135,8 +148,8 @@ type storageParams struct {
 	parameters  url.Values
 	headers     map[string]string
 	errorMap    errorMap
-	noBody      bool
-	// body=None
+	noResponse  bool
+	body        io.Reader
 }
 
 func (c *Connection) storage(p storageParams) (*http.Response, error) {
@@ -164,7 +177,7 @@ func (c *Connection) storage(p storageParams) (*http.Response, error) {
 		//		CheckRedirect: redirectPolicyFunc,
 		Transport: tr,
 	}
-	req, err := http.NewRequest(p.operation, url, nil)
+	req, err := http.NewRequest(p.operation, url, p.body)
 	if err != nil {
 		return nil, err
 	}
@@ -175,17 +188,16 @@ func (c *Connection) storage(p storageParams) (*http.Response, error) {
 	}
 	req.Header.Add("User-Agent", USER_AGENT)
 	req.Header.Add("X-Auth-Token", c.auth_token)
-	// FIXME extra_headers
 	// FIXME body of request?
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	if err := c.parseHeaders(resp, p.errorMap); err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, err
 	}
-	if p.noBody {
+	if p.noResponse {
 		err := resp.Body.Close()
 		if err != nil {
 			return nil, err
@@ -198,7 +210,7 @@ func (c *Connection) storage(p storageParams) (*http.Response, error) {
 //
 // Closes the response when done
 func readLines(resp *http.Response) (lines []string, err error) {
-	defer resp.Body.Close()
+	defer checkClose(resp.Body, &err)
 	reader := bufio.NewReader(resp.Body)
 	buffer := bytes.NewBuffer(make([]byte, 128))
 	var part []byte
@@ -222,8 +234,8 @@ func readLines(resp *http.Response) (lines []string, err error) {
 // Read the response into the json type passed in
 //
 // Closes the response when done
-func readJson(resp *http.Response, result interface{}) error {
-	defer resp.Body.Close()
+func readJson(resp *http.Response, result interface{}) (err error) {
+	defer checkClose(resp.Body, &err)
 	decoder := json.NewDecoder(resp.Body)
 	return decoder.Decode(result)
 }
@@ -257,7 +269,7 @@ func (c *Connection) ListContainers(opts *ListContainersOpts) ([]string, error) 
 	resp, err := c.storage(storageParams{
 		operation:  "GET",
 		parameters: v,
-		errorMap: containerErrorMap,
+		errorMap:   containerErrorMap,
 	})
 	if err != nil {
 		return nil, err
@@ -267,9 +279,9 @@ func (c *Connection) ListContainers(opts *ListContainersOpts) ([]string, error) 
 
 // Information about a container
 type ContainerInfo struct {
-	Name  string		// Name of the container
-	Count int64		// Number of objects in the container
-	Bytes int64		// Total number of bytes used in the container
+	Name  string // Name of the container
+	Count int64  // Number of objects in the container
+	Bytes int64  // Total number of bytes used in the container
 }
 
 // Return a list of structures with container info
@@ -283,7 +295,7 @@ func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerIn
 	resp, err := c.storage(storageParams{
 		operation:  "GET",
 		parameters: v,
-		errorMap: containerErrorMap,
+		errorMap:   containerErrorMap,
 	})
 	if err != nil {
 		return nil, err
@@ -296,11 +308,11 @@ func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerIn
 /* ------------------------------------------------------------ */
 
 type ListObjectsOpts struct {
-	Limit int	// For an integer value n, limits the number of results to at most n values.
-	Marker string	// Given a string value x, return object names greater in value than the  specified marker.
-	Prefix string	// For a string value x, causes the results to be limited to object names beginning with the substring x.
-	Path string	// For a string value x, return the object names nested in the pseudo path
-	Delimiter rune	// For a character c, return all the object names nested in the container
+	Limit     int    // For an integer value n, limits the number of results to at most n values.
+	Marker    string // Given a string value x, return object names greater in value than the  specified marker.
+	Prefix    string // For a string value x, causes the results to be limited to object names beginning with the substring x.
+	Path      string // For a string value x, return the object names nested in the pseudo path
+	Delimiter rune   // For a character c, return all the object names nested in the container
 }
 
 func (opts *ListObjectsOpts) parse() url.Values {
@@ -335,7 +347,7 @@ func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]str
 		container:  container,
 		operation:  "GET",
 		parameters: v,
-		errorMap: containerErrorMap,
+		errorMap:   containerErrorMap,
 	})
 	if err != nil {
 		return nil, err
@@ -347,7 +359,7 @@ func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]str
 type ObjectInfo struct {
 	Name         string `json:"name"`          // object name
 	ContentType  string `json:"content_type"`  // eg application/directory
-	Bytes        int64  `json:"bytes"`	   // size in bytes
+	Bytes        int64  `json:"bytes"`         // size in bytes
 	LastModified string `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680'
 	Hash         string `json:"hash"`          // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
 }
@@ -364,7 +376,7 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 		container:  container,
 		operation:  "GET",
 		parameters: v,
-		errorMap: containerErrorMap,
+		errorMap:   containerErrorMap,
 	})
 	if err != nil {
 		return nil, err
@@ -376,9 +388,9 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 }
 
 type AccountInfo struct {
-	BytesUsed int64		// total number of bytes used
-	Containers int64	// total number of containers
-	Objects int64		// total number of objects
+	BytesUsed  int64 // total number of bytes used
+	Containers int64 // total number of containers
+	Objects    int64 // total number of objects
 }
 
 // Helper function to decode int64 from header
@@ -394,24 +406,24 @@ func getInt64FromHeader(resp *http.Response, header string) (result int64, err e
 // Return info about the account
 //
 // {'bytes_used': 316598182, 'container_count': 4, 'object_count': 1433}
-func (c * Connection) AccountInfo() (info AccountInfo, err error) {
+func (c *Connection) AccountInfo() (info AccountInfo, err error) {
 	var resp *http.Response
 	resp, err = c.storage(storageParams{
 		operation:  "HEAD",
-		errorMap: containerErrorMap,
-		noBody: true,
+		errorMap:   containerErrorMap,
+		noResponse: true,
 	})
 	if err != nil {
 		return
 	}
-        // Parse the headers into a dict
-        //
-        //    {'Accept-Ranges': 'bytes',
-        //     'Content-Length': '0',
-        //     'Date': 'Tue, 05 Jul 2011 16:37:06 GMT',
-        //     'X-Account-Bytes-Used': '316598182',
-        //     'X-Account-Container-Count': '4',
-        //     'X-Account-Object-Count': '1433'}
+	// Parse the headers into a dict
+	//
+	//    {'Accept-Ranges': 'bytes',
+	//     'Content-Length': '0',
+	//     'Date': 'Tue, 05 Jul 2011 16:37:06 GMT',
+	//     'X-Account-Bytes-Used': '316598182',
+	//     'X-Account-Container-Count': '4',
+	//     'X-Account-Object-Count': '1433'}
 	// FIXME very wordy
 	if info.BytesUsed, err = getInt64FromHeader(resp, "X-Account-Bytes-Used"); err != nil {
 		return
@@ -432,8 +444,8 @@ func (c *Connection) CreateContainer(container string) error {
 	_, err := c.storage(storageParams{
 		container:  container,
 		operation:  "PUT",
-		errorMap: containerErrorMap,
-		noBody: true,
+		errorMap:   containerErrorMap,
+		noResponse: true,
 	})
 	return err
 }
@@ -443,8 +455,8 @@ func (c *Connection) DeleteContainer(container string) error {
 	_, err := c.storage(storageParams{
 		container:  container,
 		operation:  "DELETE",
-		errorMap: containerErrorMap,
-		noBody: true,
+		errorMap:   containerErrorMap,
+		noResponse: true,
 	})
 	return err
 }
@@ -455,8 +467,8 @@ func (c *Connection) ContainerInfo(container string) (info ContainerInfo, err er
 	resp, err = c.storage(storageParams{
 		container:  container,
 		operation:  "HEAD",
-		errorMap: containerErrorMap,
-		noBody: true,
+		errorMap:   containerErrorMap,
+		noResponse: true,
 	})
 	if err != nil {
 		return
@@ -470,5 +482,178 @@ func (c *Connection) ContainerInfo(container string) (info ContainerInfo, err er
 	if info.Count, err = getInt64FromHeader(resp, "X-Container-Object-Count"); err != nil {
 		return
 	}
+	return
+}
+
+// ------------------------------------------------------------
+
+// Create or update the path in the container from contents
+// 
+// contents should be an open io.ReadCloser which will have all its contents read and then closed.
+// FIXME nil?
+// 
+// Returns the headers of the response
+// 
+// If check_md5 is True then it will calculate the md5sum of the
+// file as it is being uploaded and check it against that
+// returned from the server.  If it is wrong then it will raise ObjectCorrupted
+// 
+// If md5 is set the it will be sent to the server which will
+// check the md5 itself after the upload, and will raise
+// ObjectCorrupted if it is incorrect.
+// 
+// If contentType is set it will be used, otherwise one will be
+// guessed from the name using the mimetypes module FIXME
+
+// FIXME I think this will do chunked transfer since we aren't providing a content length
+
+func (c *Connection) CreateObject(container string, objectName string, contents io.ReadCloser, checkMd5 bool, Md5 string, contentType string) (resp *http.Response, err error) {
+	defer checkClose(contents, &err)
+	if contentType == "" {
+		// http.DetectContentType FIXME
+		contentType = "application/octet-stream" // FIXME
+	}
+	// Meta stuff
+	extra_headers := map[string]string{
+		"Content-Type": contentType,
+	}
+	if Md5 != "" {
+		extra_headers["Etag"] = Md5
+		checkMd5 = false // the server will do it
+	}
+	hash := md5.New()
+	var body io.Reader = contents
+	if checkMd5 {
+		body = io.TeeReader(contents, hash)
+	}
+	resp, err = c.storage(storageParams{
+		container:   container,
+		object_name: objectName,
+		operation:   "PUT",
+		headers:     extra_headers,
+		body:        body,
+		noResponse:  true,
+		errorMap:    objectErrorMap,
+	})
+	if err != nil {
+		return
+	}
+	if checkMd5 {
+		md5 := strings.ToLower(resp.Header.Get("Etag"))
+		body_md5 := fmt.Sprintf("%x", hash.Sum(nil))
+		if md5 != body_md5 {
+			err = ObjectCorrupted
+			return
+		}
+	}
+	return
+}
+
+// Buffer which can be closed to fulfil io.WriteCloser interface
+type closeableBuffer struct {
+	bytes.Buffer
+}
+
+// Close function which resets the buffer but otherwise does nothing
+func (b *closeableBuffer) Close() error {
+	b.Reset()
+	return nil
+}
+
+// Create an object from a []byte
+// This is a simplified interface which checks the MD5 and doesn't return the response
+func (c *Connection) CreateObjectBytes(container string, objectName string, contents []byte, contentType string) (err error) {
+	buf := new(closeableBuffer)
+	buf.Write(contents)
+	_, err = c.CreateObject(container, objectName, buf, true, "", contentType)
+	return
+}
+
+// Create an object from a string
+// This is a simplified interface which checks the MD5 and doesn't return the response
+func (c *Connection) CreateObjectString(container string, objectName string, contents string, contentType string) (err error) {
+	buf := new(closeableBuffer)
+	buf.WriteString(contents)
+	_, err = c.CreateObject(container, objectName, buf, true, "", contentType)
+	return
+}
+
+// Get the object into the io.WriteCloser contents
+// 
+// Returns the headers of the response
+// 
+// If checkMd5 is true then it will calculate the md5sum of the file
+// as it is being received and check it against that returned from the
+// server.  If it is wrong then it will return ObjectCorrupted
+// 
+// If Close is true then it will close contents at the end of the stream
+
+func (c *Connection) GetObject(container string, objectName string, contents io.WriteCloser, checkMd5 bool, Close bool) (resp *http.Response, err error) {
+	// FIXME content-type
+	if Close {
+		defer checkClose(contents, &err)
+	}
+	resp, err = c.storage(storageParams{
+		container:   container,
+		object_name: objectName,
+		operation:   "GET",
+		errorMap:    objectErrorMap,
+	})
+	if err != nil {
+		return
+	}
+	defer checkClose(resp.Body, &err)
+	hash := md5.New()
+	var body io.Writer = contents
+	if checkMd5 {
+		body = io.MultiWriter(contents, hash)
+	}
+	var written int64
+	written, err = io.Copy(body, resp.Body)
+	if err != nil {
+		return
+	}
+
+	// Check the MD5 sum if requested
+	if checkMd5 {
+		md5 := strings.ToLower(resp.Header.Get("Etag"))
+		body_md5 := fmt.Sprintf("%x", hash.Sum(nil))
+		if md5 != body_md5 {
+			err = ObjectCorrupted
+			return
+		}
+	}
+
+	// Check to see we wrote the correct number of bytes
+	if resp.Header.Get("Content-Length") != "" {
+		var object_length int64
+		object_length, err = getInt64FromHeader(resp, "Content-Length")
+		if err != nil {
+			return
+		}
+		if object_length != written {
+			err = ObjectCorrupted
+			return
+		}
+	}
+
+	return
+}
+
+// Return an object as a []byte
+// This is a simplified interface which checks the MD5 and doesn't return the response
+func (c *Connection) GetObjectBytes(container string, objectName string) (contents []byte, err error) {
+	buf := new(closeableBuffer)
+	_, err = c.GetObject(container, objectName, buf, true, false)
+	contents = buf.Bytes()
+	return
+}
+
+// Return an object as a string
+// This is a simplified interface which checks the MD5 and doesn't return the response
+func (c *Connection) GetObjectString(container string, objectName string) (contents string, err error) {
+	buf := new(closeableBuffer)
+	_, err = c.GetObject(container, objectName, buf, true, false)
+	contents = buf.String()
 	return
 }
