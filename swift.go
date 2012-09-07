@@ -16,6 +16,11 @@ FIXME implement read all files / containers which uses limit and marker to loop
 FIXME make more api compatible with python cloudfiles?
 
 FIXME timeout?
+
+Retry operations on timeout / network errors?
+
+FIXME get rid of closeableBuffer and use io.Reader, io.Writer and make the caller close the file stream they opened
+
 */
 
 package swift
