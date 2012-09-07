@@ -21,6 +21,16 @@ Retry operations on timeout / network errors?
 
 FIXME get rid of closeableBuffer and use io.Reader, io.Writer and make the caller close the file stream they opened
 
+FIXME put USER_AGENT and RETRIES into Connection
+
+Make Connection thread safe - whenever it is changed take a write lock whenever it is read from a read lock
+
+Remove header returns - not needed?
+
+ Add extra headers field to Connection (for via etc)
+
+Could potentially store response in Connection but would make it thread unsafe
+
 */
 
 package swift
