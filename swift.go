@@ -43,7 +43,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -69,13 +68,37 @@ type Connection struct {
 
 type errorMap map[int]error
 
+// All errors returned from this package are of this type
+type Error struct {
+	StatusCode int // HTTP status code if relevant or 0 if not
+	Text string
+}
+
+// Satisfy the error interface
+func (e *Error) Error() string {
+	return e.Text
+}
+
+// Make a new error from a string
+func newError(StatusCode int, Text string) *Error {
+	return &Error{
+		StatusCode: StatusCode,
+		Text: Text,
+	}
+}
+
+// Make a new error from sprintf parameters
+func newErrorf(StatusCode int, Text string, Parameters ...interface{}) *Error {
+	return newError(StatusCode, fmt.Sprintf(Text, Parameters...))
+}
+
 var (
 	// Custom Errors
-	AuthorizationFailed = errors.New("Authorization Failed")
-	ContainerNotFound   = errors.New("Container Not Found")
-	ContainerNotEmpty   = errors.New("Container Not Empty")
-	ObjectNotFound      = errors.New("Object Not Found")
-	ObjectCorrupted     = errors.New("Object Corrupted")
+	AuthorizationFailed = newError(401, "Authorization Failed")
+	ContainerNotFound   = newError(404, "Container Not Found")
+	ContainerNotEmpty   = newError(409, "Container Not Empty")
+	ObjectNotFound      = newError(404, "Object Not Found")
+	ObjectCorrupted     = newError(422, "Object Corrupted")
 
 	// Mappings for authentication errors
 	authErrorMap = errorMap{
@@ -113,7 +136,7 @@ func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error 
 	}
 	// FIXME convert date header here?
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return errors.New(fmt.Sprintf("HTTP Error: %d: %s", resp.StatusCode, resp.Status))
+		return newErrorf(resp.StatusCode, "HTTP Error: %d: %s", resp.StatusCode, resp.Status)
 	}
 	return nil
 }
@@ -160,7 +183,7 @@ func (c *Connection) Authenticate() (err error) {
 	c.storage_url = resp.Header.Get("X-Storage-Url")
 	c.auth_token = resp.Header.Get("X-Auth-Token")
 	if !c.Authenticated() {
-		return errors.New("Response didn't have storage url and auth token")
+		return newError(0, "Response didn't have storage url and auth token")
 	}
 	return nil
 }
@@ -461,7 +484,7 @@ func getInt64FromHeader(resp *http.Response, header string) (result int64, err e
 	value := resp.Header.Get(header)
 	result, err = strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		err = errors.New(fmt.Sprintf("Bad Header '%s': '%s': %s", header, value, err))
+		err = newErrorf(0, "Bad Header '%s': '%s': %s", header, value, err)
 	}
 	return
 }
