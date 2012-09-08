@@ -7,8 +7,6 @@ FIXME return body close errors
 
 FIXME rename to go-swift to match user agent string
 
-FIXME use persistent http connections?
-
 FIXME reconnect on auth error - 403 when token expires
 
 FIXME implement read all files / containers which uses limit and marker to loop
@@ -33,6 +31,9 @@ Make errors use an error heirachy then can catch them with a type assertion
 
  Error(...)
  ObjectCorrupted{ Error }
+
+Make a Debug flag for logging stuff
+
 */
 
 package swift
@@ -62,6 +63,8 @@ type Connection struct {
 	AuthUrl     string
 	storage_url string
 	auth_token  string
+	tr *http.Transport
+	client *http.Client
 }
 
 type errorMap map[int]error
@@ -117,14 +120,21 @@ func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error 
 
 // Connects to the cloud storage system
 func (c *Connection) Authenticate() (err error) {
-	tr := &http.Transport{
-	//		TLSClientConfig:    &tls.Config{RootCAs: pool},
-	//		DisableCompression: true,
+	if c.tr == nil {
+		c.tr = &http.Transport{
+			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
+			//		DisableCompression: true,
+		}
 	}
-	client := &http.Client{
-		//		CheckRedirect: redirectPolicyFunc,
-		Transport: tr,
+	if c.client == nil {
+		c.client = &http.Client{
+			//		CheckRedirect: redirectPolicyFunc,
+			Transport: c.tr,
+		}
 	}
+	// Flush the keepalives connection - if we are
+	// re-authenticating then stuff has gone wrong
+	c.tr.CloseIdleConnections()
 	var req *http.Request
 	req, err = http.NewRequest("GET", c.AuthUrl, nil)
 	if err != nil {
@@ -134,11 +144,16 @@ func (c *Connection) Authenticate() (err error) {
 	req.Header.Set("X-Auth-Key", c.ApiKey)
 	req.Header.Set("X-Auth-User", c.UserName)
 	var resp *http.Response
-	resp, err = client.Do(req)
+	resp, err = c.client.Do(req)
 	if err != nil {
 		return
 	}
-	defer checkClose(resp.Body, &err)
+	defer func() {
+		checkClose(resp.Body, &err)
+		// Flush the auth connection - we don't want to keep
+		// it open if keepalives were enabled
+		c.tr.CloseIdleConnections()
+	}()
 	if err = c.parseHeaders(resp, authErrorMap); err != nil {
 		return
 	}
@@ -214,14 +229,6 @@ func (c *Connection) storage(p storageParams) (resp *http.Response, err error) {
 				url += "?" + encoded
 			}
 		}
-		tr := &http.Transport{
-		//		TLSClientConfig:    &tls.Config{RootCAs: pool},
-		//		DisableCompression: true,
-		}
-		client := &http.Client{
-			//		CheckRedirect: redirectPolicyFunc,
-			Transport: tr,
-		}
 		var req *http.Request
 		req, err = http.NewRequest(p.operation, url, p.body)
 		if err != nil {
@@ -235,7 +242,7 @@ func (c *Connection) storage(p storageParams) (resp *http.Response, err error) {
 		req.Header.Add("User-Agent", USER_AGENT)
 		req.Header.Add("X-Auth-Token", c.auth_token)
 		// FIXME body of request?
-		resp, err = client.Do(req)
+		resp, err = c.client.Do(req)
 		if err != nil {
 			return
 		}
