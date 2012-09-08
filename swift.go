@@ -19,8 +19,6 @@ FIXME timeout?
 
 Retry operations on timeout / network errors?
 
-FIXME get rid of closeableBuffer and use io.Reader, io.Writer and make the caller close the file stream they opened
-
 FIXME put USER_AGENT and RETRIES into Connection
 
 Make Connection thread safe - whenever it is changed take a write lock whenever it is read from a read lock
@@ -31,6 +29,10 @@ Remove header returns - not needed?
 
 Could potentially store response in Connection but would make it thread unsafe
 
+Make errors use an error heirachy then can catch them with a type assertion
+
+ Error(...)
+ ObjectCorrupted{ Error }
 */
 
 package swift
@@ -543,7 +545,7 @@ func (c *Connection) ContainerInfo(container string) (info ContainerInfo, err er
 
 // Create or update the path in the container from contents
 // 
-// contents should be an open io.ReadCloser which will have all its contents read and then closed.
+// contents should be an open io.Reader which will have all its contents read
 // FIXME nil?
 // 
 // Returns the headers of the response
@@ -561,8 +563,7 @@ func (c *Connection) ContainerInfo(container string) (info ContainerInfo, err er
 
 // FIXME I think this will do chunked transfer since we aren't providing a content length
 
-func (c *Connection) CreateObject(container string, objectName string, contents io.ReadCloser, checkMd5 bool, Md5 string, contentType string) (resp *http.Response, err error) {
-	defer checkClose(contents, &err)
+func (c *Connection) CreateObject(container string, objectName string, contents io.Reader, checkMd5 bool, Md5 string, contentType string) (resp *http.Response, err error) {
 	if contentType == "" {
 		// http.DetectContentType FIXME
 		contentType = "application/octet-stream" // FIXME
@@ -603,22 +604,10 @@ func (c *Connection) CreateObject(container string, objectName string, contents 
 	return
 }
 
-// Buffer which can be closed to fulfil io.WriteCloser interface
-type closeableBuffer struct {
-	bytes.Buffer
-}
-
-// Close function which resets the buffer but otherwise does nothing
-func (b *closeableBuffer) Close() error {
-	b.Reset()
-	return nil
-}
-
 // Create an object from a []byte
 // This is a simplified interface which checks the MD5 and doesn't return the response
 func (c *Connection) CreateObjectBytes(container string, objectName string, contents []byte, contentType string) (err error) {
-	buf := new(closeableBuffer)
-	buf.Write(contents)
+	buf := bytes.NewBuffer(contents)
 	_, err = c.CreateObject(container, objectName, buf, true, "", contentType)
 	return
 }
@@ -626,27 +615,21 @@ func (c *Connection) CreateObjectBytes(container string, objectName string, cont
 // Create an object from a string
 // This is a simplified interface which checks the MD5 and doesn't return the response
 func (c *Connection) CreateObjectString(container string, objectName string, contents string, contentType string) (err error) {
-	buf := new(closeableBuffer)
-	buf.WriteString(contents)
+	buf := strings.NewReader(contents)
 	_, err = c.CreateObject(container, objectName, buf, true, "", contentType)
 	return
 }
 
-// Get the object into the io.WriteCloser contents
+// Get the object into the io.Writer contents
 // 
 // Returns the headers of the response
 // 
 // If checkMd5 is true then it will calculate the md5sum of the file
 // as it is being received and check it against that returned from the
 // server.  If it is wrong then it will return ObjectCorrupted
-// 
-// If Close is true then it will close contents at the end of the stream
 
-func (c *Connection) GetObject(container string, objectName string, contents io.WriteCloser, checkMd5 bool, Close bool) (resp *http.Response, err error) {
+func (c *Connection) GetObject(container string, objectName string, contents io.Writer, checkMd5 bool) (resp *http.Response, err error) {
 	// FIXME content-type
-	if Close {
-		defer checkClose(contents, &err)
-	}
 	resp, err = c.storage(storageParams{
 		container:   container,
 		object_name: objectName,
@@ -697,8 +680,8 @@ func (c *Connection) GetObject(container string, objectName string, contents io.
 // Return an object as a []byte
 // This is a simplified interface which checks the MD5 and doesn't return the response
 func (c *Connection) GetObjectBytes(container string, objectName string) (contents []byte, err error) {
-	buf := new(closeableBuffer)
-	_, err = c.GetObject(container, objectName, buf, true, false)
+	var buf bytes.Buffer
+	_, err = c.GetObject(container, objectName, &buf, true)
 	contents = buf.Bytes()
 	return
 }
@@ -706,8 +689,8 @@ func (c *Connection) GetObjectBytes(container string, objectName string) (conten
 // Return an object as a string
 // This is a simplified interface which checks the MD5 and doesn't return the response
 func (c *Connection) GetObjectString(container string, objectName string) (contents string, err error) {
-	buf := new(closeableBuffer)
-	_, err = c.GetObject(container, objectName, buf, true, false)
+	var buf bytes.Buffer
+	_, err = c.GetObject(container, objectName, &buf, true)
 	contents = buf.String()
 	return
 }
