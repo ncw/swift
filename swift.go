@@ -53,7 +53,7 @@ import (
 )
 
 const (
-	USER_AGENT = "goswift/1.0"
+	USER_AGENT      = "goswift/1.0"
 	DEFAULT_RETRIES = 3
 )
 
@@ -63,8 +63,8 @@ type Connection struct {
 	AuthUrl     string
 	storage_url string
 	auth_token  string
-	tr *http.Transport
-	client *http.Client
+	tr          *http.Transport
+	client      *http.Client
 }
 
 type errorMap map[int]error
@@ -122,8 +122,8 @@ func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error 
 func (c *Connection) Authenticate() (err error) {
 	if c.tr == nil {
 		c.tr = &http.Transport{
-			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
-			//		DisableCompression: true,
+		//		TLSClientConfig:    &tls.Config{RootCAs: pool},
+		//		DisableCompression: true,
 		}
 	}
 	if c.client == nil {
