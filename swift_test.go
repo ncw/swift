@@ -55,5 +55,4 @@ func TestMain(t *testing.T) {
 	fmt.Println("delete container 1", c.DeleteContainer("sausage"))
 	fmt.Println("delete container again", c.DeleteContainer("sausage"))
 	fmt.Println(c.ContainerInfo("SquirrelSave"))
-
 }
