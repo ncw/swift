@@ -33,6 +33,10 @@ Make errors use an error heirachy then can catch them with a type assertion
  ObjectCorrupted{ Error }
 
 Make a Debug flag for logging stuff
+
+Object metadata with HEAD and POST
+
+Container metadata with HEAD and POST
 */
 
 import (
@@ -399,6 +403,7 @@ func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerIn
 type ListObjectsOpts struct {
 	Limit     int    // For an integer value n, limits the number of results to at most n values.
 	Marker    string // Given a string value x, return object names greater in value than the  specified marker.
+	EndMarker string // Given a string value x, return object names less in value than the specified marker
 	Prefix    string // For a string value x, causes the results to be limited to object names beginning with the substring x.
 	Path      string // For a string value x, return the object names nested in the pseudo path
 	Delimiter rune   // For a character c, return all the object names nested in the container
@@ -412,6 +417,9 @@ func (opts *ListObjectsOpts) parse() url.Values {
 		}
 		if opts.Marker != "" {
 			v.Set("marker", opts.Marker)
+		}
+		if opts.EndMarker != "" {
+			v.Set("end_marker", opts.EndMarker)
 		}
 		if opts.Prefix != "" {
 			v.Set("prefix", opts.Prefix)
