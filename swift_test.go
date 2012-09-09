@@ -47,7 +47,7 @@ func TestMain(t *testing.T) {
 
 	objects, err3 := c.ListObjects("SquirrelSave", nil)
 	fmt.Println(objects, err3)
-	objectsinfo, err4 := c.ListObjectsInfo("SquirrelSave", nil)
+	objectsinfo, err4 := c.ListObjectsInfo("SquirrelSave", &swift.ListObjectsOpts{Delimiter: '/'})
 	fmt.Println(objectsinfo, err4)
 	objects, err3 = c.ListObjects("SquirrelSave", &swift.ListObjectsOpts{Delimiter: '/', Path: ""})
 	fmt.Println(objects, err3)

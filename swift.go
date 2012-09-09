@@ -506,14 +506,21 @@ func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]str
 
 // Information about an object
 type ObjectInfo struct {
-	Name         string `json:"name"`          // object name
-	ContentType  string `json:"content_type"`  // eg application/directory
-	Bytes        int64  `json:"bytes"`         // size in bytes
-	LastModified string `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680'
-	Hash         string `json:"hash"`          // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
+	Name            string `json:"name"`          // object name
+	ContentType     string `json:"content_type"`  // eg application/directory
+	Bytes           int64  `json:"bytes"`         // size in bytes
+	LastModified    string `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680'
+	Hash            string `json:"hash"`          // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
+	PseudoDirectory bool   // Set when using delimiter to show that this directory object does not really exist
+	SubDir          string `json:"subdir"` // returned only when using delimiter to mark "pseudo directories"
 }
 
 // Return ObjectInfos with information about each object in the container
+//
+// If Delimiter is set in the opts then PseudoDirectory may be set,
+// with ContentType 'application/directory'.  These are not real
+// objects but represent directories of objects which haven't had an
+// object created for them.
 func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([]ObjectInfo, error) {
 	v := opts.parse()
 	v.Set("format", "json")
@@ -528,6 +535,13 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 	}
 	var containers []ObjectInfo
 	err = readJson(resp, &containers)
+	for i := range containers {
+		if containers[i].SubDir != "" {
+			containers[i].Name = containers[i].SubDir
+			containers[i].PseudoDirectory = true
+			containers[i].ContentType = "application/directory"
+		}
+	}
 	// FIXME convert the dates!
 	return containers, err
 }
