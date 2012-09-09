@@ -4,8 +4,8 @@
 package swift_test
 
 import (
-        "github.com/ncw/swift"
 	"fmt"
+	"github.com/ncw/swift"
 )
 
 func Example() {
