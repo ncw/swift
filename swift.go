@@ -63,16 +63,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"log"
 )
 
 const (
-	USER_AGENT      = "goswift/1.0" 	// Default user agent
-	DEFAULT_RETRIES = 3	// Default number of retries on token expiry
+	USER_AGENT      = "goswift/1.0" // Default user agent
+	DEFAULT_RETRIES = 3             // Default number of retries on token expiry
 )
 
 // Connection holds the details of the connection to the swift server
@@ -99,7 +99,7 @@ type Connection struct {
 // may be passed on from library functions though.
 type Error struct {
 	StatusCode int // HTTP status code if relevant or 0 if not
-	Text string
+	Text       string
 }
 
 // Satisfy the error interface
@@ -111,7 +111,7 @@ func (e *Error) Error() string {
 func newError(StatusCode int, Text string) *Error {
 	return &Error{
 		StatusCode: StatusCode,
-		Text: Text,
+		Text:       Text,
 	}
 }
 
@@ -429,9 +429,9 @@ func (c *Connection) ListContainers(opts *ListContainersOpts) ([]string, error) 
 
 // Information about a container
 type ContainerInfo struct {
-	Name  string // Name of the container
-	Count int64  // Number of objects in the container
-	Bytes int64  // Total number of bytes used in the container
+	Name     string   // Name of the container
+	Count    int64    // Number of objects in the container
+	Bytes    int64    // Total number of bytes used in the container
 	Metadata Metadata // Any metadata for the container.  Only returned using ContainerInfo, not ListContainers*
 }
 
@@ -534,9 +534,9 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 
 // Information about this account
 type AccountInfo struct {
-	BytesUsed  int64 // total number of bytes used
-	Containers int64 // total number of containers
-	Objects    int64 // total number of objects
+	BytesUsed  int64    // total number of bytes used
+	Containers int64    // total number of containers
+	Objects    int64    // total number of objects
 	Metadata   Metadata // any metadata that has been set
 }
 
@@ -671,7 +671,6 @@ func (c *Connection) UpdateContainer(container string, m Metadata) error {
 	})
 	return err
 }
-
 
 // ------------------------------------------------------------
 

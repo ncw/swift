@@ -30,6 +30,16 @@ func init() {
 
 func TestMain(t *testing.T) {
 	fmt.Println(c)
+
+	m1 := swift.Metadata{"Hello": "1", "potato-Salad": "2"}
+	m2 := swift.Metadata{"hello": "", "potato-salad": ""}
+
+	fmt.Println(c.AccountInfo())
+	fmt.Println(c.UpdateAccount(m1))
+	fmt.Println(c.AccountInfo())
+	fmt.Println(c.UpdateAccount(m2))
+	fmt.Println(c.AccountInfo())
+
 	containers, err := c.ListContainers(nil)
 	fmt.Println(containers, err)
 	containerinfos, err2 := c.ListContainersInfo(nil)
@@ -43,8 +53,10 @@ func TestMain(t *testing.T) {
 	fmt.Println(objects, err3)
 	objects, err3 = c.ListObjects("SquirrelSave", &swift.ListObjectsOpts{Delimiter: '/', Path: "Downloads/"})
 	fmt.Println(objects, err3)
-	fmt.Println(c.AccountInfo())
-	fmt.Println(c.CreateContainer("sausage"))
+	fmt.Println(c.CreateContainer("sausage", m1))
+	fmt.Println(c.ContainerInfo("sausage"))
+	fmt.Println(c.UpdateContainer("sausage", m2))
+	fmt.Println(c.ContainerInfo("sausage"))
 
 	fmt.Println("Create", c.CreateObjectString("sausage", "test_object", "12345", ""))
 	fmt.Println(c.GetObjectString("sausage", "test_object"))
