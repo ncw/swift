@@ -53,6 +53,11 @@ Perhaps allow extra headers on the basic operations?
 
 Or re-work the metadata so it is just extra http headers with some utility functions to set metadata?
 
+FIXME swift client retries and backs off for all types of errors
+
+FIXME write a script which uses this and replicates the functionality of swift tool
+
+FIXME add unit tests
 
 */
 
@@ -292,7 +297,7 @@ type storageParams struct {
 // FIXME make noResponse check for 204?
 //
 // This will Authenticate if necessary, and re-authenticate if it
-// receives a 403 error which means the token has expired
+// receives a 401 error which means the token has expired
 func (c *Connection) storage(p storageParams) (resp *http.Response, err error) {
 	retries := p.retries
 	if retries == 0 {
@@ -336,7 +341,7 @@ func (c *Connection) storage(p storageParams) (resp *http.Response, err error) {
 			return
 		}
 		// Check to see if token has expired
-		if resp.StatusCode == 403 && retries > 0 {
+		if resp.StatusCode == 401 && retries > 0 {
 			_ = resp.Body.Close()
 			c.UnAuthenticate()
 			retries--
