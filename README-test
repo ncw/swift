@@ -3,6 +3,6 @@ Rackspace Cloud files account.
 
 Set these environment variables before running the tests
 
-  export RCLOUD_API_USER='user'
-  export RCLOUD_API_KEY='key'
-  export RCLOUD_AUTH_URL='https://url.of.auth.server/v1.0'
+  export SWIFT_API_USER='user'
+  export SWIFT_API_KEY='key'
+  export SWIFT_AUTH_URL='https://url.of.auth.server/v1.0'

@@ -10,11 +10,11 @@ import (
 var c swift.Connection
 
 func init() {
-	UserName := os.Getenv("RCLOUD_API_USER")
-	ApiKey := os.Getenv("RCLOUD_API_KEY")
-	AuthUrl := os.Getenv("RCLOUD_AUTH_URL")
+	UserName := os.Getenv("SWIFT_API_USER")
+	ApiKey := os.Getenv("SWIFT_API_KEY")
+	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
 	if UserName == "" || ApiKey == "" || AuthUrl == "" {
-		panic("RCLOUD_API_USER, RCLOUD_API_KEY and RCLOUD_AUTH_URL not all set")
+		panic("SWIFT_API_USER, SWIFT_API_KEY and SWIFT_AUTH_URL not all set")
 	}
 	c = swift.Connection{
 		UserName: UserName,
