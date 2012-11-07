@@ -153,9 +153,6 @@ var (
 	}
 )
 
-// Type for storing metadata
-type Metadata map[string]string
-
 // Utility function used to check the return from Close in a defer
 // statement
 func checkClose(c io.Closer, err *error) {
@@ -179,37 +176,88 @@ func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error 
 	return nil
 }
 
-// Read the Metadata starting with the metaPrefix out of the response
+// Returns a Headers object from the http.Response
+//
+// Logs a warning if receives multiple values for a key (which
+// should never happen)
+func readHeaders(resp *http.Response) Headers {
+	headers := Headers{}
+	for key, values := range resp.Header {
+		headers[key] = values[0]
+		if len(values) > 1 {
+			log.Printf("swift: received multiple values for header %q", key)
+		}
+	}
+	return headers
+}
+
+// Type for storing HTTP headers (can only have one of each header like swift)
+type Headers map[string]string
+
+// Type for storing metadata
+type Metadata map[string]string
+
+// Metadata gets the Metadata starting with the metaPrefix out of the Headers
 //
 // The keys in the Metadata will be converted to lower case
-func readMetadata(resp *http.Response, metaPrefix string) Metadata {
+func (h Headers) Metadata(metaPrefix string) Metadata {
 	m := Metadata{}
 	metaPrefix = http.CanonicalHeaderKey(metaPrefix)
-	for key, values := range resp.Header {
-		if strings.HasPrefix(key, metaPrefix) && len(values) >= 1 {
+	for key, value := range h {
+		if strings.HasPrefix(key, metaPrefix) {
 			metaKey := strings.ToLower(key[len(metaPrefix):])
-			m[metaKey] = values[0]
-			if len(values) > 1 {
-				log.Printf("swift: received multiple values for header %s", key)
-			}
+			m[metaKey] = value
 		}
 	}
 	return m
 }
 
-// Make the Metadata starting with the metaPrefix into a map for storage()
+// AccountMetadata converts Headers from account to a Metadata
+//
+// The keys in the Metadata will be converted to lower case
+func (h Headers) AccountMetadata() Metadata {
+	return h.Metadata("X-Account-Meta-")
+}
+
+// ContainerMetadata converts Headers from container to a Metadata
+//
+// The keys in the Metadata will be converted to lower case
+func (h Headers) ContainerMetadata() Metadata {
+	return h.Metadata("X-Container-Meta-")
+}
+
+// ObjectMetadata converts Headers from object to a Metadata
+//
+// The keys in the Metadata will be converted to lower case
+func (h Headers) ObjectMetadata() Metadata {
+	return h.Metadata("X-Object-Meta-")
+}
+
+// Headers convert the Metadata starting with the metaPrefix into a Headers
 //
 // The keys in the Metadata will be converted from lower case to http Canonical (see http.CanonicalHeaderKey)
-func prefixMetadata(metaPrefix string, m Metadata) Metadata {
-	if m == nil {
-		return nil
-	}
-	mWithPrefix := Metadata{}
+func (m Metadata) Headers(metaPrefix string) Headers {
+	h := Headers{}
 	for key, value := range m {
 		key = http.CanonicalHeaderKey(metaPrefix + key)
-		mWithPrefix[key] = value
+		h[key] = value
 	}
-	return mWithPrefix
+	return h
+}
+
+// AccountHeaders converts the Metadata for the account
+func (m Metadata) AccountHeaders() Headers {
+	return m.Headers("X-Account-Meta-")
+}
+
+// ContainerHeaders converts the Metadata for the container
+func (m Metadata) ContainerHeaders() Headers {
+	return m.Headers("X-Container-Meta-")
+}
+
+// ObjectHeaders converts the Metadata for the object
+func (m Metadata) ObjectHeaders() Headers {
+	return m.Headers("X-Object-Meta-")
 }
 
 // Connects to the cloud storage system
@@ -278,7 +326,7 @@ type storageParams struct {
 	object_name string
 	operation   string
 	parameters  url.Values
-	headers     map[string]string
+	headers     Headers
 	errorMap    errorMap
 	noResponse  bool
 	body        io.Reader
@@ -298,7 +346,7 @@ type storageParams struct {
 //
 // This will Authenticate if necessary, and re-authenticate if it
 // receives a 401 error which means the token has expired
-func (c *Connection) storage(p storageParams) (resp *http.Response, err error) {
+func (c *Connection) storage(p storageParams) (resp *http.Response, headers Headers, err error) {
 	retries := p.retries
 	if retries == 0 {
 		retries = DEFAULT_RETRIES
@@ -352,12 +400,13 @@ func (c *Connection) storage(p storageParams) (resp *http.Response, err error) {
 
 	if err = c.parseHeaders(resp, p.errorMap); err != nil {
 		_ = resp.Body.Close()
-		return nil, err
+		return nil, nil, err
 	}
+	headers = readHeaders(resp)
 	if p.noResponse {
 		err = resp.Body.Close()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	return
@@ -401,12 +450,14 @@ func readJson(resp *http.Response, result interface{}) (err error) {
 
 // Options for ListContainers*
 type ListContainersOpts struct {
-	Limit  int    // For an integer value n, limits the number of results to at most n values.
-	Marker string // Given a string value x, return object names greater in value than the specified marker.
+	Limit   int     // For an integer value n, limits the number of results to at most n values.
+	Marker  string  // Given a string value x, return object names greater in value than the specified marker.
+	Headers Headers // Any additional HTTP headers - can be nil
 }
 
-func (opts *ListContainersOpts) parse() url.Values {
+func (opts *ListContainersOpts) parse() (url.Values, Headers) {
 	v := url.Values{}
+	var h Headers
 	if opts != nil {
 		if opts.Limit > 0 {
 			v.Set("limit", strconv.Itoa(opts.Limit))
@@ -414,63 +465,68 @@ func (opts *ListContainersOpts) parse() url.Values {
 		if opts.Marker != "" {
 			v.Set("marker", opts.Marker)
 		}
+		h = opts.Headers
 	}
-	return v
+	return v, h
 }
 
 // Return a list of names of containers in this account
-func (c *Connection) ListContainers(opts *ListContainersOpts) ([]string, error) {
-	v := opts.parse()
-	resp, err := c.storage(storageParams{
+func (c *Connection) ListContainers(opts *ListContainersOpts, h Headers) ([]string, Headers, error) {
+	v, h := opts.parse()
+	resp, headers, err := c.storage(storageParams{
 		operation:  "GET",
 		parameters: v,
 		errorMap:   containerErrorMap,
+		headers:    h,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return readLines(resp)
+	lines, err := readLines(resp)
+	return lines, headers, err
 }
 
 // Information about a container
 type ContainerInfo struct {
-	Name     string   // Name of the container
-	Count    int64    // Number of objects in the container
-	Bytes    int64    // Total number of bytes used in the container
-	Metadata Metadata // Any metadata for the container.  Only returned using ContainerInfo, not ListContainers*
+	Name  string // Name of the container
+	Count int64  // Number of objects in the container
+	Bytes int64  // Total number of bytes used in the container
 }
 
 // Return a list of structures with full information as described in ContainerInfo
-func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerInfo, error) {
-	v := opts.parse()
+func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerInfo, Headers, error) {
+	v, h := opts.parse()
 	v.Set("format", "json")
-	resp, err := c.storage(storageParams{
+	resp, headers, err := c.storage(storageParams{
 		operation:  "GET",
 		parameters: v,
 		errorMap:   containerErrorMap,
+		headers:    h,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var containers []ContainerInfo
 	err = readJson(resp, &containers)
-	return containers, err
+	return containers, headers, err
 }
 
 /* ------------------------------------------------------------ */
 
 // Options for ListObjects*
 type ListObjectsOpts struct {
-	Limit     int    // For an integer value n, limits the number of results to at most n values.
-	Marker    string // Given a string value x, return object names greater in value than the  specified marker.
-	EndMarker string // Given a string value x, return object names less in value than the specified marker
-	Prefix    string // For a string value x, causes the results to be limited to object names beginning with the substring x.
-	Path      string // For a string value x, return the object names nested in the pseudo path
-	Delimiter rune   // For a character c, return all the object names nested in the container
+	Limit     int     // For an integer value n, limits the number of results to at most n values.
+	Marker    string  // Given a string value x, return object names greater in value than the  specified marker.
+	EndMarker string  // Given a string value x, return object names less in value than the specified marker
+	Prefix    string  // For a string value x, causes the results to be limited to object names beginning with the substring x.
+	Path      string  // For a string value x, return the object names nested in the pseudo path
+	Delimiter rune    // For a character c, return all the object names nested in the container
+	Headers   Headers // Any additional HTTP headers - can be nil
 }
 
-func (opts *ListObjectsOpts) parse() url.Values {
+func (opts *ListObjectsOpts) parse() (url.Values, Headers) {
 	v := url.Values{}
+	var h Headers
 	if opts != nil {
 		if opts.Limit > 0 {
 			v.Set("limit", strconv.Itoa(opts.Limit))
@@ -490,23 +546,26 @@ func (opts *ListObjectsOpts) parse() url.Values {
 		if opts.Delimiter != 0 {
 			v.Set("delimiter", string(opts.Delimiter))
 		}
+		h = opts.Headers
 	}
-	return v
+	return v, h
 }
 
 // Return a list of names of objects in a given container
-func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]string, error) {
-	v := opts.parse()
-	resp, err := c.storage(storageParams{
+func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]string, Headers, error) {
+	v, h := opts.parse()
+	resp, headers, err := c.storage(storageParams{
 		container:  container,
 		operation:  "GET",
 		parameters: v,
 		errorMap:   containerErrorMap,
+		headers:    h,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return readLines(resp)
+	lines, err := readLines(resp)
+	return lines, headers, err
 }
 
 // Information about an object
@@ -526,17 +585,18 @@ type ObjectInfo struct {
 // with ContentType 'application/directory'.  These are not real
 // objects but represent directories of objects which haven't had an
 // object created for them.
-func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([]ObjectInfo, error) {
-	v := opts.parse()
+func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([]ObjectInfo, Headers, error) {
+	v, h := opts.parse()
 	v.Set("format", "json")
-	resp, err := c.storage(storageParams{
+	resp, headers, err := c.storage(storageParams{
 		container:  container,
 		operation:  "GET",
 		parameters: v,
 		errorMap:   containerErrorMap,
+		headers:    h,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var containers []ObjectInfo
 	err = readJson(resp, &containers)
@@ -548,15 +608,14 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 		}
 	}
 	// FIXME convert the dates!
-	return containers, err
+	return containers, headers, err
 }
 
 // Information about this account
 type AccountInfo struct {
-	BytesUsed  int64    // total number of bytes used
-	Containers int64    // total number of containers
-	Objects    int64    // total number of objects
-	Metadata   Metadata // any metadata that has been set
+	BytesUsed  int64 // total number of bytes used
+	Containers int64 // total number of containers
+	Objects    int64 // total number of objects
 }
 
 // Helper function to decode int64 from header
@@ -570,12 +629,13 @@ func getInt64FromHeader(resp *http.Response, header string) (result int64, err e
 }
 
 // Return info about the account in an AccountInfo struct
-func (c *Connection) AccountInfo() (info AccountInfo, err error) {
+func (c *Connection) AccountInfo(h Headers) (info AccountInfo, headers Headers, err error) {
 	var resp *http.Response
-	resp, err = c.storage(storageParams{
+	resp, headers, err = c.storage(storageParams{
 		operation:  "HEAD",
 		errorMap:   containerErrorMap,
 		noResponse: true,
+		headers:    h,
 	})
 	if err != nil {
 		return
@@ -588,7 +648,6 @@ func (c *Connection) AccountInfo() (info AccountInfo, err error) {
 	//     'X-Account-Bytes-Used': '316598182',
 	//     'X-Account-Container-Count': '4',
 	//     'X-Account-Object-Count': '1433'}
-	// FIXME very wordy
 	if info.BytesUsed, err = getInt64FromHeader(resp, "X-Account-Bytes-Used"); err != nil {
 		return
 	}
@@ -598,23 +657,22 @@ func (c *Connection) AccountInfo() (info AccountInfo, err error) {
 	if info.Objects, err = getInt64FromHeader(resp, "X-Account-Object-Count"); err != nil {
 		return
 	}
-	info.Metadata = readMetadata(resp, "X-Account-Meta-")
 	return
 }
 
 // Add, Replace or Remove Account Metadata
 //
-// Add or Update keys by mentioning them in the Metadata
+// Add or Update keys by mentioning them in the Headers
 //
 // Remove keys by setting them to an empty string
-func (c *Connection) UpdateAccount(m Metadata) error {
-	_, err := c.storage(storageParams{
+func (c *Connection) UpdateAccount(h Headers) (Headers, error) {
+	_, headers, err := c.storage(storageParams{
 		operation:  "POST",
 		errorMap:   containerErrorMap,
 		noResponse: true,
-		headers:    prefixMetadata("X-Account-Meta-", m),
+		headers:    h,
 	})
-	return err
+	return headers, err
 }
 
 // FIXME Make a container struct so these could be methods on it?
@@ -624,37 +682,39 @@ func (c *Connection) UpdateAccount(m Metadata) error {
 // If you don't want to add Metadata just pass in nil
 //
 // No error is returned if it already exists.
-func (c *Connection) CreateContainer(container string, m Metadata) error {
-	_, err := c.storage(storageParams{
+func (c *Connection) CreateContainer(container string, h Headers) (Headers, error) {
+	_, headers, err := c.storage(storageParams{
 		container:  container,
 		operation:  "PUT",
 		errorMap:   containerErrorMap,
 		noResponse: true,
-		headers:    prefixMetadata("X-Container-Meta-", m),
+		headers:    h,
 	})
-	return err
+	return headers, err
 }
 
 // Delete a container.
 // May return ContainerDoesNotExist or ContainerNotEmpty
-func (c *Connection) DeleteContainer(container string) error {
-	_, err := c.storage(storageParams{
+func (c *Connection) DeleteContainer(container string, h Headers) (Headers, error) {
+	_, headers, err := c.storage(storageParams{
 		container:  container,
 		operation:  "DELETE",
 		errorMap:   containerErrorMap,
 		noResponse: true,
+		headers:    h,
 	})
-	return err
+	return headers, err
 }
 
 // Returns info about a single container
-func (c *Connection) ContainerInfo(container string) (info ContainerInfo, err error) {
+func (c *Connection) ContainerInfo(container string, h Headers) (info ContainerInfo, headers Headers, err error) {
 	var resp *http.Response
-	resp, err = c.storage(storageParams{
+	resp, headers, err = c.storage(storageParams{
 		container:  container,
 		operation:  "HEAD",
 		errorMap:   containerErrorMap,
 		noResponse: true,
+		headers:    h,
 	})
 	if err != nil {
 		return
@@ -668,7 +728,6 @@ func (c *Connection) ContainerInfo(container string) (info ContainerInfo, err er
 	if info.Count, err = getInt64FromHeader(resp, "X-Container-Object-Count"); err != nil {
 		return
 	}
-	info.Metadata = readMetadata(resp, "X-Container-Meta-")
 	return
 }
 
@@ -680,15 +739,15 @@ func (c *Connection) ContainerInfo(container string) (info ContainerInfo, err er
 //
 // Container metadata can only be read with ContainerInfo not with any
 // of the ListContainer methods.
-func (c *Connection) UpdateContainer(container string, m Metadata) error {
-	_, err := c.storage(storageParams{
+func (c *Connection) UpdateContainer(container string, h Headers) (Headers, error) {
+	_, headers, err := c.storage(storageParams{
 		container:  container,
 		operation:  "POST",
 		errorMap:   containerErrorMap,
 		noResponse: true,
-		headers:    prefixMetadata("X-Container-Meta-", m),
+		headers:    h,
 	})
-	return err
+	return headers, err
 }
 
 // ------------------------------------------------------------
@@ -708,7 +767,7 @@ func (c *Connection) UpdateContainer(container string, m Metadata) error {
 // guessed from the name using the mimetypes module FIXME
 //
 // FIXME I think this will do chunked transfer since we aren't providing a content length
-func (c *Connection) CreateObject(container string, objectName string, contents io.Reader, checkMd5 bool, Md5 string, contentType string) (err error) {
+func (c *Connection) CreateObject(container string, objectName string, contents io.Reader, checkMd5 bool, Md5 string, contentType string, h Headers) (headers Headers, err error) {
 	if contentType == "" {
 		// http.DetectContentType FIXME
 		contentType = "application/octet-stream" // FIXME
@@ -716,6 +775,9 @@ func (c *Connection) CreateObject(container string, objectName string, contents 
 	// Meta stuff
 	extra_headers := map[string]string{
 		"Content-Type": contentType,
+	}
+	for key, value := range h {
+		extra_headers[key] = value
 	}
 	if Md5 != "" {
 		extra_headers["Etag"] = Md5
@@ -727,7 +789,7 @@ func (c *Connection) CreateObject(container string, objectName string, contents 
 		body = io.TeeReader(contents, hash)
 	}
 	var resp *http.Response
-	resp, err = c.storage(storageParams{
+	resp, headers, err = c.storage(storageParams{
 		container:   container,
 		object_name: objectName,
 		operation:   "PUT",
@@ -754,7 +816,7 @@ func (c *Connection) CreateObject(container string, objectName string, contents 
 // This is a simplified interface which checks the MD5
 func (c *Connection) CreateObjectBytes(container string, objectName string, contents []byte, contentType string) (err error) {
 	buf := bytes.NewBuffer(contents)
-	err = c.CreateObject(container, objectName, buf, true, "", contentType)
+	_, err = c.CreateObject(container, objectName, buf, true, "", contentType, nil)
 	return
 }
 
@@ -762,7 +824,7 @@ func (c *Connection) CreateObjectBytes(container string, objectName string, cont
 // This is a simplified interface which checks the MD5
 func (c *Connection) CreateObjectString(container string, objectName string, contents string, contentType string) (err error) {
 	buf := strings.NewReader(contents)
-	err = c.CreateObject(container, objectName, buf, true, "", contentType)
+	_, err = c.CreateObject(container, objectName, buf, true, "", contentType, nil)
 	return
 }
 
@@ -773,14 +835,15 @@ func (c *Connection) CreateObjectString(container string, objectName string, con
 // If checkMd5 is true then it will calculate the md5sum of the file
 // as it is being received and check it against that returned from the
 // server.  If it is wrong then it will return ObjectCorrupted
-func (c *Connection) GetObject(container string, objectName string, contents io.Writer, checkMd5 bool) (err error) {
+func (c *Connection) GetObject(container string, objectName string, contents io.Writer, checkMd5 bool, h Headers) (headers Headers, err error) {
 	// FIXME content-type
 	var resp *http.Response
-	resp, err = c.storage(storageParams{
+	resp, headers, err = c.storage(storageParams{
 		container:   container,
 		object_name: objectName,
 		operation:   "GET",
 		errorMap:    objectErrorMap,
+		headers:     h,
 	})
 	if err != nil {
 		return
@@ -827,7 +890,7 @@ func (c *Connection) GetObject(container string, objectName string, contents io.
 // This is a simplified interface which checks the MD5
 func (c *Connection) GetObjectBytes(container string, objectName string) (contents []byte, err error) {
 	var buf bytes.Buffer
-	err = c.GetObject(container, objectName, &buf, true)
+	_, err = c.GetObject(container, objectName, &buf, true, nil)
 	contents = buf.Bytes()
 	return
 }
@@ -836,18 +899,18 @@ func (c *Connection) GetObjectBytes(container string, objectName string) (conten
 // This is a simplified interface which checks the MD5
 func (c *Connection) GetObjectString(container string, objectName string) (contents string, err error) {
 	var buf bytes.Buffer
-	err = c.GetObject(container, objectName, &buf, true)
+	_, err = c.GetObject(container, objectName, &buf, true, nil)
 	contents = buf.String()
 	return
 }
 
 // Delete the object. May return ObjectDoesNotExist if the object isn't found
-func (c *Connection) DeleteObject(container string, objectName string) error {
-	_, err := c.storage(storageParams{
+func (c *Connection) DeleteObject(container string, objectName string) (Headers, error) {
+	_, headers, err := c.storage(storageParams{
 		container:   container,
 		object_name: objectName,
 		operation:   "DELETE",
 		errorMap:    objectErrorMap,
 	})
-	return err
+	return headers, err
 }
