@@ -46,3 +46,5 @@ Copy object
 Swift client retries and backs off for all types of errors
 
 Write a script which uses this and replicates the functionality of swift tool
+
+Convert date header using ObjectInfo.Convert() method?
