@@ -1,13 +1,13 @@
 Notes on Go Swift
 =================
 
-Headers should be set and returned in HTTP canonical
+URGENT: Make the method names more consistent: ObjectInfo vs UpdateObject?
 
 Rename to go-swift to match user agent string
 
-Reconnect on auth error - 403 when token expires
+Reconnect on auth error - 401 when token expires isn't tested
 
-Implement read all files / containers which uses limit and marker to loop
+Implement higher level read all files / containers which uses limit and marker to loop
 
 Make more api compatible with python cloudfiles?
 
