@@ -418,7 +418,7 @@ func (c *Connection) storage(p storageParams) (resp *http.Response, headers Head
 func readLines(resp *http.Response) (lines []string, err error) {
 	defer checkClose(resp.Body, &err)
 	reader := bufio.NewReader(resp.Body)
-	buffer := bytes.NewBuffer(make([]byte, 128))
+	buffer := bytes.NewBuffer(make([]byte, 0, 128))
 	var part []byte
 	var prefix bool
 	for {
@@ -667,14 +667,14 @@ func (c *Connection) AccountInfo() (info AccountInfo, headers Headers, err error
 // Add or Update keys by mentioning them in the Headers
 //
 // Remove keys by setting them to an empty string
-func (c *Connection) UpdateAccount(h Headers) (Headers, error) {
-	_, headers, err := c.storage(storageParams{
+func (c *Connection) UpdateAccount(h Headers) error {
+	_, _, err := c.storage(storageParams{
 		operation:  "POST",
 		errorMap:   containerErrorMap,
 		noResponse: true,
 		headers:    h,
 	})
-	return headers, err
+	return err
 }
 
 // FIXME Make a container struct so these could be methods on it?
@@ -683,16 +683,16 @@ func (c *Connection) UpdateAccount(h Headers) (Headers, error) {
 //
 // If you don't want to add Headers just pass in nil
 //
-// No error is returned if it already exists.
-func (c *Connection) CreateContainer(container string, h Headers) (Headers, error) {
-	_, headers, err := c.storage(storageParams{
+// No error is returned if it already exists but the metadata if any will be updated.
+func (c *Connection) CreateContainer(container string, h Headers) error {
+	_, _, err := c.storage(storageParams{
 		container:  container,
 		operation:  "PUT",
 		errorMap:   containerErrorMap,
 		noResponse: true,
 		headers:    h,
 	})
-	return headers, err
+	return err
 }
 
 // Delete a container.
@@ -738,15 +738,15 @@ func (c *Connection) ContainerInfo(container string) (info ContainerInfo, header
 //
 // Container metadata can only be read with ContainerInfo not with any
 // of the ListContainer methods.
-func (c *Connection) UpdateContainer(container string, h Headers) (Headers, error) {
-	_, headers, err := c.storage(storageParams{
+func (c *Connection) UpdateContainer(container string, h Headers) error {
+	_, _, err := c.storage(storageParams{
 		container:  container,
 		operation:  "POST",
 		errorMap:   containerErrorMap,
 		noResponse: true,
 		headers:    h,
 	})
-	return headers, err
+	return err
 }
 
 // ------------------------------------------------------------
