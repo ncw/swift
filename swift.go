@@ -869,11 +869,11 @@ func (c *Connection) DeleteObject(container string, objectName string) error {
 func (c *Connection) ObjectInfo(container string, objectName string) (info ObjectInfo, headers Headers, err error) {
 	var resp *http.Response
 	resp, headers, err = c.storage(storageParams{
-		container:  container,
+		container:   container,
 		object_name: objectName,
-		operation:  "HEAD",
-		errorMap:   objectErrorMap,
-		noResponse: true,
+		operation:   "HEAD",
+		errorMap:    objectErrorMap,
+		noResponse:  true,
 	})
 	if err != nil {
 		return
@@ -925,12 +925,12 @@ func (c *Connection) ObjectInfo(container string, objectName string) (info Objec
 // May return ObjectNotFound
 func (c *Connection) UpdateObject(container string, objectName string, h Headers) error {
 	_, _, err := c.storage(storageParams{
-		container:  container,
+		container:   container,
 		object_name: objectName,
-		operation:  "POST",
-		errorMap:   objectErrorMap,
-		noResponse: true,
-		headers:    h,
+		operation:   "POST",
+		errorMap:    objectErrorMap,
+		noResponse:  true,
+		headers:     h,
 	})
 	return err
 }
