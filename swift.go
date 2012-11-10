@@ -452,6 +452,7 @@ func readJson(resp *http.Response, result interface{}) (err error) {
 type ListContainersOpts struct {
 	Limit   int     // For an integer value n, limits the number of results to at most n values.
 	Marker  string  // Given a string value x, return object names greater in value than the specified marker.
+	EndMarker string // Given a string value x, return container names less in value than the specified marker.
 	Headers Headers // Any additional HTTP headers - can be nil
 }
 
@@ -465,25 +466,28 @@ func (opts *ListContainersOpts) parse() (url.Values, Headers) {
 		if opts.Marker != "" {
 			v.Set("marker", opts.Marker)
 		}
+		if opts.EndMarker != "" {
+			v.Set("end_marker", opts.EndMarker)
+		}
 		h = opts.Headers
 	}
 	return v, h
 }
 
 // Return a list of names of containers in this account
-func (c *Connection) ListContainers(opts *ListContainersOpts, h Headers) ([]string, Headers, error) {
+func (c *Connection) ListContainers(opts *ListContainersOpts) ([]string, error) {
 	v, h := opts.parse()
-	resp, headers, err := c.storage(storageParams{
+	resp, _, err := c.storage(storageParams{
 		operation:  "GET",
 		parameters: v,
 		errorMap:   containerErrorMap,
 		headers:    h,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	lines, err := readLines(resp)
-	return lines, headers, err
+	return lines, err
 }
 
 // Information about a container
@@ -494,21 +498,21 @@ type ContainerInfo struct {
 }
 
 // Return a list of structures with full information as described in ContainerInfo
-func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerInfo, Headers, error) {
+func (c *Connection) ListContainersInfo(opts *ListContainersOpts) ([]ContainerInfo, error) {
 	v, h := opts.parse()
 	v.Set("format", "json")
-	resp, headers, err := c.storage(storageParams{
+	resp, _, err := c.storage(storageParams{
 		operation:  "GET",
 		parameters: v,
 		errorMap:   containerErrorMap,
 		headers:    h,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var containers []ContainerInfo
 	err = readJson(resp, &containers)
-	return containers, headers, err
+	return containers, err
 }
 
 /* ------------------------------------------------------------ */
@@ -552,9 +556,9 @@ func (opts *ListObjectsOpts) parse() (url.Values, Headers) {
 }
 
 // Return a list of names of objects in a given container
-func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]string, Headers, error) {
+func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]string, error) {
 	v, h := opts.parse()
-	resp, headers, err := c.storage(storageParams{
+	resp, _, err := c.storage(storageParams{
 		container:  container,
 		operation:  "GET",
 		parameters: v,
@@ -562,10 +566,9 @@ func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]str
 		headers:    h,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	lines, err := readLines(resp)
-	return lines, headers, err
+	return readLines(resp)
 }
 
 // Information about an object
@@ -585,10 +588,10 @@ type ObjectInfo struct {
 // with ContentType 'application/directory'.  These are not real
 // objects but represent directories of objects which haven't had an
 // object created for them.
-func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([]ObjectInfo, Headers, error) {
+func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([]ObjectInfo, error) {
 	v, h := opts.parse()
 	v.Set("format", "json")
-	resp, headers, err := c.storage(storageParams{
+	resp, _, err := c.storage(storageParams{
 		container:  container,
 		operation:  "GET",
 		parameters: v,
@@ -596,7 +599,7 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 		headers:    h,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var containers []ObjectInfo
 	err = readJson(resp, &containers)
@@ -608,7 +611,7 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 		}
 	}
 	// FIXME convert the dates!
-	return containers, headers, err
+	return containers, err
 }
 
 // Information about this account
@@ -629,13 +632,12 @@ func getInt64FromHeader(resp *http.Response, header string) (result int64, err e
 }
 
 // Return info about the account in an AccountInfo struct
-func (c *Connection) AccountInfo(h Headers) (info AccountInfo, headers Headers, err error) {
+func (c *Connection) AccountInfo() (info AccountInfo, headers Headers, err error) {
 	var resp *http.Response
 	resp, headers, err = c.storage(storageParams{
 		operation:  "HEAD",
 		errorMap:   containerErrorMap,
 		noResponse: true,
-		headers:    h,
 	})
 	if err != nil {
 		return
@@ -679,7 +681,7 @@ func (c *Connection) UpdateAccount(h Headers) (Headers, error) {
 
 // Create a container.
 //
-// If you don't want to add Metadata just pass in nil
+// If you don't want to add Headers just pass in nil
 //
 // No error is returned if it already exists.
 func (c *Connection) CreateContainer(container string, h Headers) (Headers, error) {
@@ -695,31 +697,28 @@ func (c *Connection) CreateContainer(container string, h Headers) (Headers, erro
 
 // Delete a container.
 // May return ContainerDoesNotExist or ContainerNotEmpty
-func (c *Connection) DeleteContainer(container string, h Headers) (Headers, error) {
-	_, headers, err := c.storage(storageParams{
+func (c *Connection) DeleteContainer(container string) error {
+	_, _, err := c.storage(storageParams{
 		container:  container,
 		operation:  "DELETE",
 		errorMap:   containerErrorMap,
 		noResponse: true,
-		headers:    h,
 	})
-	return headers, err
+	return err
 }
 
-// Returns info about a single container
-func (c *Connection) ContainerInfo(container string, h Headers) (info ContainerInfo, headers Headers, err error) {
+// Returns info about a single container including any metadata in the headers
+func (c *Connection) ContainerInfo(container string) (info ContainerInfo, headers Headers, err error) {
 	var resp *http.Response
 	resp, headers, err = c.storage(storageParams{
 		container:  container,
 		operation:  "HEAD",
 		errorMap:   containerErrorMap,
 		noResponse: true,
-		headers:    h,
 	})
 	if err != nil {
 		return
 	}
-	// FIXME wordy
 	// Parse the headers into the struct
 	info.Name = container
 	if info.Bytes, err = getInt64FromHeader(resp, "X-Container-Bytes-Used"); err != nil {
@@ -754,14 +753,17 @@ func (c *Connection) UpdateContainer(container string, h Headers) (Headers, erro
 
 // Create or update the path in the container from contents.
 // contents should be an open io.Reader which will have all its contents read
+//
+// This is a low level interface
 // 
 // If checkMd5 is True then it will calculate the md5sum of the
 // file as it is being uploaded and check it against that
-// returned from the server.  If it is wrong then it will raise ObjectCorrupted
+// returned from the server.  If it is wrong then it will return ObjectCorrupted
 // 
-// If md5 is set the it will be sent to the server which will
-// check the md5 itself after the upload, and will raise
-// ObjectCorrupted if it is incorrect.
+// If you know the MD5 of the object ahead of time then set the Md5
+// parameter and it will be sent to the server (as an Etag header) and
+// the server will check the md5 itself after the upload, and this
+// will return ObjectCorrupted if it is incorrect.
 // 
 // If contentType is set it will be used, otherwise one will be
 // guessed from the name using the mimetypes module FIXME
@@ -905,12 +907,73 @@ func (c *Connection) GetObjectString(container string, objectName string) (conte
 }
 
 // Delete the object. May return ObjectDoesNotExist if the object isn't found
-func (c *Connection) DeleteObject(container string, objectName string) (Headers, error) {
-	_, headers, err := c.storage(storageParams{
+func (c *Connection) DeleteObject(container string, objectName string) error {
+	_, _, err := c.storage(storageParams{
 		container:   container,
 		object_name: objectName,
 		operation:   "DELETE",
 		errorMap:    objectErrorMap,
 	})
-	return headers, err
+	return err
 }
+
+/* FIXME
+3.4.10. Retrieve Object Metadata
+
+HEAD operations on an object are used to retrieve object metadata and other standard HTTP headers.
+
+The only required header to be sent in the request is the authorization token.
+
+Example 3.59. Object Metadata Request
+
+  HEAD /<api version>/<account>/<container>/<object> HTTP/1.1
+  Host: storage.swiftdrive.com
+  X-Auth-Token: eaaafd18-0fed-4b3a-81b4-663c99ec1cbb
+                    
+
+No response body is returned. Metadata is returned as HTTP headers. A status code of 200 (OK) indicates success; status 404 (Not Found) is returned when the object does not exist.
+
+You may note that the HEAD return code for the object is different from that of the container. HEAD requests do not return a message body in the response, so anything in the 2xx response code range notes success. When a HEAD query is run against the container, it queries the container databases, and it does not retrieve the content of them, thus the 204 (No Content) return code. However, when a HEAD query is run against the object, it returns an "OK" response because it can view the content. In other words, the object HEAD query has a container length, but the container HEAD query has zero content length.
+
+Example 3.60. Object Metadata Response
+
+  HTTP/1.1 200 OK
+  Date: Thu, 07 Jun 2010 20:59:39 GMT
+  Server: Apache
+  Last-Modified: Fri, 12 Jun 2010 13:40:18 GMT
+  ETag: 8a964ee2a5e88be344f36c22562a6486
+  Content-Length: 512000
+  Content-Type: text/plain; charset=UTF-8
+  X-Object-Meta-Meat: Bacon
+  X-Object-Meta-Fruit: Bacon
+  X-Object-Meta-Veggie: Bacon
+  X-Object-Meta-Dairy: Bacon
+*/
+
+/* FIXME
+3.4.11. Update Object Metadata
+
+POST operations against an object name are used to set and overwrite arbitrary key/value metadata or to assign headers not already assigned such as X-Delete-At or X-Delete-After for expiring objects. You cannot use the POST operation to change any of the object's other headers such as Content-Type, ETag, etc. It is not used to upload storage objects (see PUT). Also refer to copying an object when you need to update metadata or other headers such as Content-Type or CORS headers.
+
+Key names must be prefixed with X-Object-Meta-. A POST request will delete all existing metadata added with a previous PUT/POST.
+
+Example 3.61. Update Object Metadata Request
+
+  POST /<api version>/<account>/<container>/<object> HTTP/1.1
+  Host: storage.swiftdrive.com
+  X-Auth-Token: eaaafd18-0fed-4b3a-81b4-663c99ec1cbb
+  X-Object-Meta-Fruit: Apple
+  X-Object-Meta-Veggie: Carrot
+                      
+
+No response body is returned. A status code of 202 (Accepted) indicates success; status 404 (Not Found) is returned if the requested object does not exist.
+
+Example 3.62. Update Object Metadata Response
+
+  HTTP/1.1 202 Accepted
+  Date: Thu, 07 Jun 2010 20:59:39 GMT
+  Server: Apache
+  Content-Length: 0
+  Content-Type: text/plain; charset=UTF-8
+                    
+*/

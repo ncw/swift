@@ -21,7 +21,7 @@ func Example() {
 		panic(err)
 	}
 	// List all the containers
-	containers, headers, err := c.ListContainers(nil, nil)
-	fmt.Println(containers, headers)
+	containers, err := c.ListContainers(nil)
+	fmt.Println(containers)
 	// etc...
 }
