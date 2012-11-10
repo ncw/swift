@@ -450,10 +450,10 @@ func readJson(resp *http.Response, result interface{}) (err error) {
 
 // Options for ListContainers*
 type ListContainersOpts struct {
-	Limit   int     // For an integer value n, limits the number of results to at most n values.
-	Marker  string  // Given a string value x, return object names greater in value than the specified marker.
-	EndMarker string // Given a string value x, return container names less in value than the specified marker.
-	Headers Headers // Any additional HTTP headers - can be nil
+	Limit     int     // For an integer value n, limits the number of results to at most n values.
+	Marker    string  // Given a string value x, return object names greater in value than the specified marker.
+	EndMarker string  // Given a string value x, return container names less in value than the specified marker.
+	Headers   Headers // Any additional HTTP headers - can be nil
 }
 
 func (opts *ListContainersOpts) parse() (url.Values, Headers) {
@@ -929,7 +929,7 @@ Example 3.59. Object Metadata Request
   HEAD /<api version>/<account>/<container>/<object> HTTP/1.1
   Host: storage.swiftdrive.com
   X-Auth-Token: eaaafd18-0fed-4b3a-81b4-663c99ec1cbb
-                    
+
 
 No response body is returned. Metadata is returned as HTTP headers. A status code of 200 (OK) indicates success; status 404 (Not Found) is returned when the object does not exist.
 
@@ -964,7 +964,7 @@ Example 3.61. Update Object Metadata Request
   X-Auth-Token: eaaafd18-0fed-4b3a-81b4-663c99ec1cbb
   X-Object-Meta-Fruit: Apple
   X-Object-Meta-Veggie: Carrot
-                      
+
 
 No response body is returned. A status code of 202 (Accepted) indicates success; status 404 (Not Found) is returned if the requested object does not exist.
 
@@ -975,5 +975,5 @@ Example 3.62. Update Object Metadata Response
   Server: Apache
   Content-Length: 0
   Content-Type: text/plain; charset=UTF-8
-                    
+
 */

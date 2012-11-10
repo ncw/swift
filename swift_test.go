@@ -18,17 +18,17 @@ import (
 )
 
 var (
-	c swift.Connection
+	c  swift.Connection
 	m1 = swift.Metadata{"Hello": "1", "potato-Salad": "2"}
 	m2 = swift.Metadata{"hello": "", "potato-salad": ""}
 )
 
 const (
-	CONTAINER = "GoSwiftUnitTest"
-	OBJECT = "test_object"
-	CONTENTS = "12345"
+	CONTAINER    = "GoSwiftUnitTest"
+	OBJECT       = "test_object"
+	CONTENTS     = "12345"
 	CONTENT_SIZE = int64(len(CONTENTS))
-	CONTENT_MD5 = "827ccb0eea8a706c4c34a16891f84e7b"
+	CONTENT_MD5  = "827ccb0eea8a706c4c34a16891f84e7b"
 )
 
 // Test functions are run in order - this one must be first!
@@ -73,16 +73,16 @@ func TestAccountInfo(t *testing.T) {
 
 func compareMaps(t *testing.T, a, b map[string]string) {
 	if len(a) != len(b) {
-		t.Error("Maps different sizes",a,b)
+		t.Error("Maps different sizes", a, b)
 	}
 	for ka, va := range a {
 		if va != b[ka] {
-			t.Error("Difference in key",ka,va,b[ka])
+			t.Error("Difference in key", ka, va, b[ka])
 		}
 	}
 	for kb, vb := range b {
 		if vb != a[kb] {
-			t.Error("Difference in key",kb,vb,a[kb])
+			t.Error("Difference in key", kb, vb, a[kb])
 		}
 	}
 }
@@ -172,7 +172,7 @@ func TestListContainers(t *testing.T) {
 	if !ok {
 		t.Errorf("Didn't find container %q in listing %q", CONTAINER, containers)
 	}
- 	// fmt.Println(containers)
+	// fmt.Println(containers)
 }
 
 func TestCreateObjectString(t *testing.T) {
@@ -208,7 +208,7 @@ func TestListContainersInfo(t *testing.T) {
 				break
 			}
 			if container.Count == 1 && container.Bytes == CONTENT_SIZE {
-			    break
+				break
 			}
 			t.Errorf("Bad size of Container %q: %q", CONTAINER, container)
 			break
@@ -217,7 +217,7 @@ func TestListContainersInfo(t *testing.T) {
 	if !ok {
 		t.Errorf("Didn't find container %q in listing %q", CONTAINER, containers)
 	}
- 	//fmt.Println(containers)
+	//fmt.Println(containers)
 }
 
 func TestListObjects(t *testing.T) {
