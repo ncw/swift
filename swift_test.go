@@ -193,6 +193,40 @@ func TestGetObjectString(t *testing.T) {
 	//fmt.Println(contents)
 }
 
+func TestUpdateObject(t *testing.T) {
+	err := c.UpdateObject(CONTAINER, OBJECT, m1.ObjectHeaders())
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestObjectInfo(t *testing.T) {
+	object, headers, err := c.ObjectInfo(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "1", "potato-salad": "2"})
+	if object.Name != OBJECT || object.Bytes != CONTENT_SIZE || object.ContentType != "application/octet-stream" || object.Hash != CONTENT_MD5 || object.PseudoDirectory != false || object.SubDir != "" {
+		t.Error("Bad object info %q", object)
+	}
+	// FIXME check object.LastModified
+}
+
+func TestUpdateObject2(t *testing.T) {
+	err := c.UpdateObject(CONTAINER, OBJECT, m2.ObjectHeaders())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, headers, err := c.ObjectInfo(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(headers, headers.ObjectMetadata())
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{})
+}
+
+// FIXME more tests for CreateObject and GetObject
+
 func TestListContainersInfo(t *testing.T) {
 	containers, err := c.ListContainersInfo(nil)
 	if err != nil {

@@ -2,65 +2,6 @@
 // Object Storage / Rackspace cloud files from the Go Language
 package swift
 
-/*
-FIXME need to implement the fixed errors so can distinguish not found etc
-
-FIXME return body close errors
-
-FIXME rename to go-swift to match user agent string
-
-FIXME reconnect on auth error - 403 when token expires
-
-FIXME implement read all files / containers which uses limit and marker to loop
-
-FIXME make more api compatible with python cloudfiles?
-
-FIXME timeout?
-
-Retry operations on timeout / network errors?
-
-FIXME put USER_AGENT and RETRIES into Connection
-
-Make Connection thread safe - whenever it is changed take a write lock whenever it is read from a read lock
-
-Add extra headers field to Connection (for via etc)
-
-Could potentially store response in Connection but would make it thread unsafe
-
-Make errors use an error heirachy then can catch them with a type assertion
-
- Error(...)
- ObjectCorrupted{ Error }
-
-Make a Debug flag for logging stuff
-
-Object metadata with HEAD and POST and PUT
-
-Object If-Match, If-None-Match, If-Modified-Since, If-Unmodified-Since etc
-
-Object range
-
-Object create, update with X-Delete-At or X-Delete-After
-
-Large object support
-- check uploads are less than 5GB in normal mode?
-
-Access control CORS?
-
-Copy object
-
-Perhaps allow extra headers on the basic operations?
-
-Or re-work the metadata so it is just extra http headers with some utility functions to set metadata?
-
-FIXME swift client retries and backs off for all types of errors
-
-FIXME write a script which uses this and replicates the functionality of swift tool
-
-FIXME add unit tests
-
-*/
-
 import (
 	"bufio"
 	"bytes"
@@ -756,20 +697,23 @@ func (c *Connection) UpdateContainer(container string, h Headers) error {
 //
 // This is a low level interface
 // 
-// If checkMd5 is True then it will calculate the md5sum of the
-// file as it is being uploaded and check it against that
-// returned from the server.  If it is wrong then it will return ObjectCorrupted
+// If checkHash is True then it will calculate the MD5 Hash of the
+// file as it is being uploaded and check it against that returned
+// from the server.  If it is wrong then it will return
+// ObjectCorrupted
 // 
-// If you know the MD5 of the object ahead of time then set the Md5
-// parameter and it will be sent to the server (as an Etag header) and
-// the server will check the md5 itself after the upload, and this
-// will return ObjectCorrupted if it is incorrect.
+// If you know the MD5 hash of the object ahead of time then set the
+// Hash parameter and it will be sent to the server (as an Etag
+// header) and the server will check the MD5 itself after the upload,
+// and this will return ObjectCorrupted if it is incorrect.
+//
+// If you don't want any error protection (not recommended) then set
+// checkHash to false and Hash to "".
 // 
 // If contentType is set it will be used, otherwise one will be
 // guessed from the name using the mimetypes module FIXME
-//
-// FIXME I think this will do chunked transfer since we aren't providing a content length
-func (c *Connection) CreateObject(container string, objectName string, contents io.Reader, checkMd5 bool, Md5 string, contentType string, h Headers) (headers Headers, err error) {
+func (c *Connection) CreateObject(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers) (headers Headers, err error) {
+	// FIXME I think this will do chunked transfer since we aren't providing a content length
 	if contentType == "" {
 		// http.DetectContentType FIXME
 		contentType = "application/octet-stream" // FIXME
@@ -781,13 +725,13 @@ func (c *Connection) CreateObject(container string, objectName string, contents 
 	for key, value := range h {
 		extra_headers[key] = value
 	}
-	if Md5 != "" {
-		extra_headers["Etag"] = Md5
-		checkMd5 = false // the server will do it
+	if Hash != "" {
+		extra_headers["Etag"] = Hash
+		checkHash = false // the server will do it
 	}
 	hash := md5.New()
 	var body io.Reader = contents
-	if checkMd5 {
+	if checkHash {
 		body = io.TeeReader(contents, hash)
 	}
 	var resp *http.Response
@@ -803,7 +747,7 @@ func (c *Connection) CreateObject(container string, objectName string, contents 
 	if err != nil {
 		return
 	}
-	if checkMd5 {
+	if checkHash {
 		md5 := strings.ToLower(resp.Header.Get("Etag"))
 		body_md5 := fmt.Sprintf("%x", hash.Sum(nil))
 		if md5 != body_md5 {
@@ -834,10 +778,10 @@ func (c *Connection) CreateObjectString(container string, objectName string, con
 // 
 // Returns the headers of the response
 // 
-// If checkMd5 is true then it will calculate the md5sum of the file
+// If checkHash is true then it will calculate the md5sum of the file
 // as it is being received and check it against that returned from the
 // server.  If it is wrong then it will return ObjectCorrupted
-func (c *Connection) GetObject(container string, objectName string, contents io.Writer, checkMd5 bool, h Headers) (headers Headers, err error) {
+func (c *Connection) GetObject(container string, objectName string, contents io.Writer, checkHash bool, h Headers) (headers Headers, err error) {
 	// FIXME content-type
 	var resp *http.Response
 	resp, headers, err = c.storage(storageParams{
@@ -853,7 +797,7 @@ func (c *Connection) GetObject(container string, objectName string, contents io.
 	defer checkClose(resp.Body, &err)
 	hash := md5.New()
 	var body io.Writer = contents
-	if checkMd5 {
+	if checkHash {
 		body = io.MultiWriter(contents, hash)
 	}
 	var written int64
@@ -863,7 +807,7 @@ func (c *Connection) GetObject(container string, objectName string, contents io.
 	}
 
 	// Check the MD5 sum if requested
-	if checkMd5 {
+	if checkHash {
 		md5 := strings.ToLower(resp.Header.Get("Etag"))
 		body_md5 := fmt.Sprintf("%x", hash.Sum(nil))
 		if md5 != body_md5 {
@@ -917,63 +861,76 @@ func (c *Connection) DeleteObject(container string, objectName string) error {
 	return err
 }
 
-/* FIXME
-3.4.10. Retrieve Object Metadata
+// ObjectInfo returns info about a single object including any metadata in the header
+//
+// May return ObjectNotFound
+//
+// use Headers.ObjectMetadata to read the metadata in the Headers
+func (c *Connection) ObjectInfo(container string, objectName string) (info ObjectInfo, headers Headers, err error) {
+	var resp *http.Response
+	resp, headers, err = c.storage(storageParams{
+		container:  container,
+		object_name: objectName,
+		operation:  "HEAD",
+		errorMap:   objectErrorMap,
+		noResponse: true,
+	})
+	if err != nil {
+		return
+	}
+	// Parse the headers into the struct
+	// HTTP/1.1 200 OK
+	// Date: Thu, 07 Jun 2010 20:59:39 GMT
+	// Server: Apache
+	// Last-Modified: Fri, 12 Jun 2010 13:40:18 GMT
+	// ETag: 8a964ee2a5e88be344f36c22562a6486
+	// Content-Length: 512000
+	// Content-Type: text/plain; charset=UTF-8
+	// X-Object-Meta-Meat: Bacon
+	// X-Object-Meta-Fruit: Bacon
+	// X-Object-Meta-Veggie: Bacon
+	// X-Object-Meta-Dairy: Bacon
+	info.Name = objectName
+	info.ContentType = resp.Header.Get("Content-Type")
+	if info.Bytes, err = getInt64FromHeader(resp, "Content-Length"); err != nil {
+		return
+	}
+	info.LastModified = resp.Header.Get("Last-Modified")
+	// FIXME convert time format
+	// FIXME note different time format here!
+	info.Hash = resp.Header.Get("Etag")
+	return
+}
 
-HEAD operations on an object are used to retrieve object metadata and other standard HTTP headers.
-
-The only required header to be sent in the request is the authorization token.
-
-Example 3.59. Object Metadata Request
-
-  HEAD /<api version>/<account>/<container>/<object> HTTP/1.1
-  Host: storage.swiftdrive.com
-  X-Auth-Token: eaaafd18-0fed-4b3a-81b4-663c99ec1cbb
-
-
-No response body is returned. Metadata is returned as HTTP headers. A status code of 200 (OK) indicates success; status 404 (Not Found) is returned when the object does not exist.
-
-You may note that the HEAD return code for the object is different from that of the container. HEAD requests do not return a message body in the response, so anything in the 2xx response code range notes success. When a HEAD query is run against the container, it queries the container databases, and it does not retrieve the content of them, thus the 204 (No Content) return code. However, when a HEAD query is run against the object, it returns an "OK" response because it can view the content. In other words, the object HEAD query has a container length, but the container HEAD query has zero content length.
-
-Example 3.60. Object Metadata Response
-
-  HTTP/1.1 200 OK
-  Date: Thu, 07 Jun 2010 20:59:39 GMT
-  Server: Apache
-  Last-Modified: Fri, 12 Jun 2010 13:40:18 GMT
-  ETag: 8a964ee2a5e88be344f36c22562a6486
-  Content-Length: 512000
-  Content-Type: text/plain; charset=UTF-8
-  X-Object-Meta-Meat: Bacon
-  X-Object-Meta-Fruit: Bacon
-  X-Object-Meta-Veggie: Bacon
-  X-Object-Meta-Dairy: Bacon
-*/
-
-/* FIXME
-3.4.11. Update Object Metadata
-
-POST operations against an object name are used to set and overwrite arbitrary key/value metadata or to assign headers not already assigned such as X-Delete-At or X-Delete-After for expiring objects. You cannot use the POST operation to change any of the object's other headers such as Content-Type, ETag, etc. It is not used to upload storage objects (see PUT). Also refer to copying an object when you need to update metadata or other headers such as Content-Type or CORS headers.
-
-Key names must be prefixed with X-Object-Meta-. A POST request will delete all existing metadata added with a previous PUT/POST.
-
-Example 3.61. Update Object Metadata Request
-
-  POST /<api version>/<account>/<container>/<object> HTTP/1.1
-  Host: storage.swiftdrive.com
-  X-Auth-Token: eaaafd18-0fed-4b3a-81b4-663c99ec1cbb
-  X-Object-Meta-Fruit: Apple
-  X-Object-Meta-Veggie: Carrot
-
-
-No response body is returned. A status code of 202 (Accepted) indicates success; status 404 (Not Found) is returned if the requested object does not exist.
-
-Example 3.62. Update Object Metadata Response
-
-  HTTP/1.1 202 Accepted
-  Date: Thu, 07 Jun 2010 20:59:39 GMT
-  Server: Apache
-  Content-Length: 0
-  Content-Type: text/plain; charset=UTF-8
-
-*/
+// UpdateObject - Add, Replace or Remove Object Metadata
+//
+// Add or Update keys by mentioning them in the Metadata.  Use
+// Metadata.ObjectHeaders and Headers.ObjectMetadata to convert your
+// Metadata to and from normal HTTP headers.
+//
+// Remove keys by setting them to an empty string
+//
+// Object metadata can only be read with ObjectInfo not with any of
+// the ListObject methods.
+//
+// This can also be used to set headers not already assigned such as
+// X-Delete-At or X-Delete-After for expiring objects.
+//
+// You cannot use this to change any of the object's other headers
+// such as Content-Type, ETag, etc.
+//
+// Refer to copying an object when you need to update metadata or
+// other headers such as Content-Type or CORS headers.
+//
+// May return ObjectNotFound
+func (c *Connection) UpdateObject(container string, objectName string, h Headers) error {
+	_, _, err := c.storage(storageParams{
+		container:  container,
+		object_name: objectName,
+		operation:  "POST",
+		errorMap:   objectErrorMap,
+		noResponse: true,
+		headers:    h,
+	})
+	return err
+}
