@@ -54,8 +54,8 @@ func TestAuthenticate(t *testing.T) {
 	}
 }
 
-func TestAccountInfo(t *testing.T) {
-	info, headers, err := c.AccountInfo()
+func TestAccount(t *testing.T) {
+	info, headers, err := c.Account()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,45 +88,45 @@ func compareMaps(t *testing.T, a, b map[string]string) {
 	}
 }
 
-func TestUpdateAccount(t *testing.T) {
-	err := c.UpdateAccount(m1.AccountHeaders())
+func TestAccountUpdate(t *testing.T) {
+	err := c.AccountUpdate(m1.AccountHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, headers, err := c.AccountInfo()
+	_, headers, err := c.Account()
 	if err != nil {
 		t.Fatal(err)
 	}
 	compareMaps(t, headers.AccountMetadata(), map[string]string{"hello": "1", "potato-salad": "2"})
 
-	err = c.UpdateAccount(m2.AccountHeaders())
+	err = c.AccountUpdate(m2.AccountHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, headers, err = c.AccountInfo()
+	_, headers, err = c.Account()
 	if err != nil {
 		t.Fatal(err)
 	}
 	compareMaps(t, headers.AccountMetadata(), map[string]string{})
 
-	//fmt.Println(c.AccountInfo())
+	//fmt.Println(c.Account())
 	//fmt.Println(headers)
 	//fmt.Println(headers.AccountMetadata())
-	//fmt.Println(c.UpdateAccount(m2.AccountHeaders()))
-	//fmt.Println(c.AccountInfo())
+	//fmt.Println(c.AccountUpdate(m2.AccountHeaders()))
+	//fmt.Println(c.Account())
 }
 
-func TestCreateContainer(t *testing.T) {
-	err := c.CreateContainer(CONTAINER, m1.ContainerHeaders())
+func TestContainerCreate(t *testing.T) {
+	err := c.ContainerCreate(CONTAINER, m1.ContainerHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestContainerInfo(t *testing.T) {
-	info, headers, err := c.ContainerInfo(CONTAINER)
+func TestContainer(t *testing.T) {
+	info, headers, err := c.Container(CONTAINER)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,12 +144,12 @@ func TestContainerInfo(t *testing.T) {
 	//fmt.Println(headers)
 }
 
-func TestUpdateContainer(t *testing.T) {
-	err := c.UpdateContainer(CONTAINER, m2.ContainerHeaders())
+func TestContainerUpdate(t *testing.T) {
+	err := c.ContainerUpdate(CONTAINER, m2.ContainerHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, headers, err := c.ContainerInfo(CONTAINER)
+	_, headers, err := c.Container(CONTAINER)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +157,8 @@ func TestUpdateContainer(t *testing.T) {
 	//fmt.Println(headers)
 }
 
-func TestListContainers(t *testing.T) {
-	containers, err := c.ListContainers(nil)
+func TestContainerNames(t *testing.T) {
+	containers, err := c.ContainerNames(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,15 +176,15 @@ func TestListContainers(t *testing.T) {
 	// fmt.Println(containers)
 }
 
-func TestCreateObjectString(t *testing.T) {
-	err := c.CreateObjectString(CONTAINER, OBJECT, CONTENTS, "")
+func TestObjectPutString(t *testing.T) {
+	err := c.ObjectPutString(CONTAINER, OBJECT, CONTENTS, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestGetObjectString(t *testing.T) {
-	contents, err := c.GetObjectString(CONTAINER, OBJECT)
+func TestObjectGetString(t *testing.T) {
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,8 +194,8 @@ func TestGetObjectString(t *testing.T) {
 	//fmt.Println(contents)
 }
 
-func TestUpdateObject(t *testing.T) {
-	err := c.UpdateObject(CONTAINER, OBJECT, m1.ObjectHeaders())
+func TestObjectUpdate(t *testing.T) {
+	err := c.ObjectUpdate(CONTAINER, OBJECT, m1.ObjectHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,8 +208,8 @@ func checkTime(t *testing.T, when time.Time, low, high int) {
 	}
 }
 
-func TestObjectInfo(t *testing.T) {
-	object, headers, err := c.ObjectInfo(CONTAINER, OBJECT)
+func TestObject(t *testing.T) {
+	object, headers, err := c.Object(CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,12 +220,12 @@ func TestObjectInfo(t *testing.T) {
 	checkTime(t, object.LastModified, -10, 10)
 }
 
-func TestUpdateObject2(t *testing.T) {
-	err := c.UpdateObject(CONTAINER, OBJECT, m2.ObjectHeaders())
+func TestObjectUpdate2(t *testing.T) {
+	err := c.ObjectUpdate(CONTAINER, OBJECT, m2.ObjectHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, headers, err := c.ObjectInfo(CONTAINER, OBJECT)
+	_, headers, err := c.Object(CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,10 +233,10 @@ func TestUpdateObject2(t *testing.T) {
 	compareMaps(t, headers.ObjectMetadata(), map[string]string{})
 }
 
-// FIXME more tests for CreateObject and GetObject
+// FIXME more tests for ObjectPut and ObjectGet
 
-func TestListContainersInfo(t *testing.T) {
-	containers, err := c.ListContainersInfo(nil)
+func TestContainers(t *testing.T) {
+	containers, err := c.Containers(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestListContainersInfo(t *testing.T) {
 	for _, container := range containers {
 		if container.Name == CONTAINER {
 			ok = true
-			// ContainerInfo may or may not have the file contents in it
+			// Container may or may not have the file contents in it
 			// Swift updates may be behind
 			if container.Count == 0 && container.Bytes == 0 {
 				break
@@ -262,8 +262,8 @@ func TestListContainersInfo(t *testing.T) {
 	//fmt.Println(containers)
 }
 
-func TestListObjects(t *testing.T) {
-	objects, err := c.ListObjects(CONTAINER, nil)
+func TestObjectNames(t *testing.T) {
+	objects, err := c.ObjectNames(CONTAINER, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,8 +273,8 @@ func TestListObjects(t *testing.T) {
 	//fmt.Println(objects)
 }
 
-func TestListObjectsInfo(t *testing.T) {
-	objects, err := c.ListObjectsInfo(CONTAINER, &swift.ListObjectsOpts{Delimiter: '/'})
+func TestObjects(t *testing.T) {
+	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,8 +289,8 @@ func TestListObjectsInfo(t *testing.T) {
 	// fmt.Println(objects)
 }
 
-func TestListObjectsWithPath(t *testing.T) {
-	objects, err := c.ListObjects(CONTAINER, &swift.ListObjectsOpts{Delimiter: '/', Path: ""})
+func TestObjectNamesWithPath(t *testing.T) {
+	objects, err := c.ObjectNames(CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: ""})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestListObjectsWithPath(t *testing.T) {
 		t.Error("Bad listing with path", objects)
 	}
 	// fmt.Println(objects)
-	objects, err = c.ListObjects(CONTAINER, &swift.ListObjectsOpts{Delimiter: '/', Path: "Downloads/"})
+	objects, err = c.ObjectNames(CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: "Downloads/"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,27 +308,27 @@ func TestListObjectsWithPath(t *testing.T) {
 	// fmt.Println(objects)
 }
 
-func TestDeleteObject(t *testing.T) {
-	err := c.DeleteObject(CONTAINER, OBJECT)
+func TestObjectDelete(t *testing.T) {
+	err := c.ObjectDelete(CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.DeleteObject(CONTAINER, OBJECT)
+	err = c.ObjectDelete(CONTAINER, OBJECT)
 	if err != swift.ObjectNotFound {
 		t.Fatal("Expecting Object not found", err)
 	}
 }
 
-func TestDeleteContainer(t *testing.T) {
-	err := c.DeleteContainer(CONTAINER)
+func TestContainerDelete(t *testing.T) {
+	err := c.ContainerDelete(CONTAINER)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.DeleteContainer(CONTAINER)
+	err = c.ContainerDelete(CONTAINER)
 	if err != swift.ContainerNotFound {
 		t.Fatal("Expecting container not found", err)
 	}
-	_, _, err = c.ContainerInfo(CONTAINER)
+	_, _, err = c.Container(CONTAINER)
 	if err != swift.ContainerNotFound {
 		t.Fatal("Expecting container not found", err)
 	}

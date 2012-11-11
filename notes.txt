@@ -1,23 +1,19 @@
 Notes on Go Swift
 =================
 
-URGENT: Make the method names more consistent: ObjectInfo vs UpdateObject?
-
 Make a container struct so these could be methods on it?
 
 // FIXME make noResponse check for 204?
 
 Make storage public so it can be extended easily?
 
-Rename to go-swift to match user agent string
+Rename to go-swift to match user agent string?
 
 Reconnect on auth error - 401 when token expires isn't tested
 
 Implement higher level read all files / containers which uses limit and marker to loop
 
 Make more api compatible with python cloudfiles?
-
-Timeout?
 
 Retry operations on timeout / network errors?
 - also 408 error
@@ -44,10 +40,8 @@ Large object support
 
 Access control CORS?
 
-Copy object
+Copy/Rename object
 
 Swift client retries and backs off for all types of errors
 
 Write a script which uses this and replicates the functionality of swift tool
-
-Convert date header using ObjectInfo.Convert() method?
