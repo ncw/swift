@@ -15,6 +15,7 @@ import (
 	"github.com/ncw/swift"
 	"os"
 	"testing"
+	"time"
 )
 
 var (
@@ -200,6 +201,13 @@ func TestUpdateObject(t *testing.T) {
 	}
 }
 
+func checkTime(t *testing.T, when time.Time, low, high int) {
+	dt := time.Now().Sub(when)
+	if dt < time.Duration(low)*time.Second || dt > time.Duration(high)*time.Second {
+		t.Errorf("Time is wrong: dt=%q, when=%q", dt, when)
+	}
+}
+
 func TestObjectInfo(t *testing.T) {
 	object, headers, err := c.ObjectInfo(CONTAINER, OBJECT)
 	if err != nil {
@@ -209,7 +217,7 @@ func TestObjectInfo(t *testing.T) {
 	if object.Name != OBJECT || object.Bytes != CONTENT_SIZE || object.ContentType != "application/octet-stream" || object.Hash != CONTENT_MD5 || object.PseudoDirectory != false || object.SubDir != "" {
 		t.Error("Bad object info %q", object)
 	}
-	// FIXME check object.LastModified
+	checkTime(t, object.LastModified, -10, 10)
 }
 
 func TestUpdateObject2(t *testing.T) {
@@ -277,7 +285,7 @@ func TestListObjectsInfo(t *testing.T) {
 	if object.Name != OBJECT || object.Bytes != CONTENT_SIZE || object.ContentType != "application/octet-stream" || object.Hash != CONTENT_MD5 || object.PseudoDirectory != false || object.SubDir != "" {
 		t.Error("Bad object info %q", object)
 	}
-	// FIXME check object.LastModified
+	checkTime(t, object.LastModified, -10, 10)
 	// fmt.Println(objects)
 }
 

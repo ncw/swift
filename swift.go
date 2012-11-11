@@ -14,11 +14,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
 	USER_AGENT      = "goswift/1.0" // Default user agent
 	DEFAULT_RETRIES = 3             // Default number of retries on token expiry
+	TimeFormat = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
 )
 
 // Connection holds the details of the connection to the swift server
@@ -110,7 +112,6 @@ func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error 
 			return err
 		}
 	}
-	// FIXME convert date header here?
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return newErrorf(resp.StatusCode, "HTTP Error: %d: %s", resp.StatusCode, resp.Status)
 	}
@@ -282,8 +283,6 @@ type storageParams struct {
 // Returns a response or an error.  If response is returned then
 // resp.Body.Close() must be called on it, unless noResponse is set in
 // which case the body will be closed in this function
-//
-// FIXME make noResponse check for 204?
 //
 // This will Authenticate if necessary, and re-authenticate if it
 // receives a 401 error which means the token has expired
@@ -517,7 +516,8 @@ type ObjectInfo struct {
 	Name            string `json:"name"`          // object name
 	ContentType     string `json:"content_type"`  // eg application/directory
 	Bytes           int64  `json:"bytes"`         // size in bytes
-	LastModified    string `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680'
+	ServerLastModified    string `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680' as a string supplied by the server
+	LastModified    time.Time // Last modified time converted to a time.Time
 	Hash            string `json:"hash"`          // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
 	PseudoDirectory bool   // Set when using delimiter to show that this directory object does not really exist
 	SubDir          string `json:"subdir"` // returned only when using delimiter to mark "pseudo directories"
@@ -542,17 +542,34 @@ func (c *Connection) ListObjectsInfo(container string, opts *ListObjectsOpts) ([
 	if err != nil {
 		return nil, err
 	}
-	var containers []ObjectInfo
-	err = readJson(resp, &containers)
-	for i := range containers {
-		if containers[i].SubDir != "" {
-			containers[i].Name = containers[i].SubDir
-			containers[i].PseudoDirectory = true
-			containers[i].ContentType = "application/directory"
+	var objects []ObjectInfo
+	err = readJson(resp, &objects)
+	// Convert Pseudo directories and dates
+	for i := range objects {
+		object := &objects[i]
+		if object.SubDir != "" {
+			object.Name = object.SubDir
+			object.PseudoDirectory = true
+			object.ContentType = "application/directory"
+		}
+		if object.ServerLastModified != "" {
+			// 2012-11-11T14:49:47.887250
+			//
+			// Remove fractional seconds if present. This
+			// then keeps it consistent with ObjectInfo
+			// which can only return timestamps accurate
+			// to 1 second
+			//
+			// The TimeFormat will parse fractional
+			// seconds if desired though
+			datetime := strings.SplitN(object.ServerLastModified, ".", 2)[0]
+			object.LastModified, err = time.Parse(TimeFormat, datetime)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
-	// FIXME convert the dates!
-	return containers, err
+	return objects, err
 }
 
 // Information about this account
@@ -617,8 +634,6 @@ func (c *Connection) UpdateAccount(h Headers) error {
 	})
 	return err
 }
-
-// FIXME Make a container struct so these could be methods on it?
 
 // Create a container.
 //
@@ -781,8 +796,9 @@ func (c *Connection) CreateObjectString(container string, objectName string, con
 // If checkHash is true then it will calculate the md5sum of the file
 // as it is being received and check it against that returned from the
 // server.  If it is wrong then it will return ObjectCorrupted
+//
+// headers["Content-Type"] will give the content type if desired
 func (c *Connection) GetObject(container string, objectName string, contents io.Writer, checkHash bool, h Headers) (headers Headers, err error) {
-	// FIXME content-type
 	var resp *http.Response
 	resp, headers, err = c.storage(storageParams{
 		container:   container,
@@ -895,9 +911,10 @@ func (c *Connection) ObjectInfo(container string, objectName string) (info Objec
 	if info.Bytes, err = getInt64FromHeader(resp, "Content-Length"); err != nil {
 		return
 	}
-	info.LastModified = resp.Header.Get("Last-Modified")
-	// FIXME convert time format
-	// FIXME note different time format here!
+	info.ServerLastModified = resp.Header.Get("Last-Modified")
+	if info.LastModified, err = time.Parse(http.TimeFormat, info.ServerLastModified); err != nil {
+		return
+	}
 	info.Hash = resp.Header.Get("Etag")
 	return
 }

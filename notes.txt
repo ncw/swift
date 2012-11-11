@@ -3,6 +3,12 @@ Notes on Go Swift
 
 URGENT: Make the method names more consistent: ObjectInfo vs UpdateObject?
 
+Make a container struct so these could be methods on it?
+
+// FIXME make noResponse check for 204?
+
+Make storage public so it can be extended easily?
+
 Rename to go-swift to match user agent string
 
 Reconnect on auth error - 401 when token expires isn't tested
