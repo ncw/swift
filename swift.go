@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	USER_AGENT      = "goswift/1.0" // Default user agent
-	DEFAULT_RETRIES = 3             // Default number of retries on token expiry
-	TimeFormat = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
+	USER_AGENT      = "goswift/1.0"         // Default user agent
+	DEFAULT_RETRIES = 3                     // Default number of retries on token expiry
+	TimeFormat      = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
 )
 
 // Connection holds the details of the connection to the swift server
@@ -513,14 +513,14 @@ func (c *Connection) ListObjects(container string, opts *ListObjectsOpts) ([]str
 
 // Information about an object
 type ObjectInfo struct {
-	Name            string `json:"name"`          // object name
-	ContentType     string `json:"content_type"`  // eg application/directory
-	Bytes           int64  `json:"bytes"`         // size in bytes
-	ServerLastModified    string `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680' as a string supplied by the server
-	LastModified    time.Time // Last modified time converted to a time.Time
-	Hash            string `json:"hash"`          // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
-	PseudoDirectory bool   // Set when using delimiter to show that this directory object does not really exist
-	SubDir          string `json:"subdir"` // returned only when using delimiter to mark "pseudo directories"
+	Name               string    `json:"name"`          // object name
+	ContentType        string    `json:"content_type"`  // eg application/directory
+	Bytes              int64     `json:"bytes"`         // size in bytes
+	ServerLastModified string    `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680' as a string supplied by the server
+	LastModified       time.Time // Last modified time converted to a time.Time
+	Hash               string    `json:"hash"` // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
+	PseudoDirectory    bool      // Set when using delimiter to show that this directory object does not really exist
+	SubDir             string    `json:"subdir"` // returned only when using delimiter to mark "pseudo directories"
 }
 
 // Return ObjectInfos with information about each object in the container
