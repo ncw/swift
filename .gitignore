@@ -1,2 +1,4 @@
 *~
-test-env
+*.pyc
+test-env*
+junk/
