@@ -229,8 +229,8 @@ func TestObjectUpdate2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(headers, headers.ObjectMetadata())
-	compareMaps(t, headers.ObjectMetadata(), map[string]string{})
+	//fmt.Println(headers, headers.ObjectMetadata())
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "", "potato-salad": ""})
 }
 
 // FIXME more tests for ObjectPut and ObjectGet

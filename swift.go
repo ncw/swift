@@ -953,7 +953,9 @@ func (c *Connection) Object(container string, objectName string) (info Object, h
 // Metadata.ObjectHeaders and Headers.ObjectMetadata to convert your
 // Metadata to and from normal HTTP headers.
 //
-// Remove keys by setting them to an empty string.
+// This removes all metadata previously added to the object and
+// replaces it with that passed in so to delete keys, just don't
+// mention them the headers you pass in.
 //
 // Object metadata can only be read with Object() not with Objects().
 //
