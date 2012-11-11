@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	USER_AGENT      = "goswift/1.0"         // Default user agent
-	DEFAULT_RETRIES = 3                     // Default number of retries on token expiry
-	TimeFormat      = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
+	DefaultUserAgent = "goswift/1.0"         // Default user agent
+	DefaultRetries   = 3                     // Default number of retries on token expiry
+	TimeFormat       = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
 )
 
 // Connection holds the details of the connection to the swift server
@@ -34,9 +34,11 @@ const (
 //  Rackspace UK        https://lon.auth.api.rackspacecloud.com/v1.0
 //  Memset Memstore UK  https://auth.storage.memset.com/v1.0
 type Connection struct {
-	UserName    string
-	ApiKey      string
-	AuthUrl     string
+	UserName    string // UserName for api
+	ApiKey      string // Key for api access
+	AuthUrl     string // Auth URL
+	Retries     int    // Retries on error (default is 3)
+	UserAgent   string // Http User agent (default goswift/1.0)
 	storage_url string
 	auth_token  string
 	tr          *http.Transport
@@ -204,6 +206,13 @@ func (m Metadata) ObjectHeaders() Headers {
 
 // Connects to the cloud storage system
 func (c *Connection) Authenticate() (err error) {
+	// Set defaults if not set
+	if c.UserAgent == "" {
+		c.UserAgent = DefaultUserAgent
+	}
+	if c.Retries == 0 {
+		c.Retries = DefaultRetries
+	}
 	if c.tr == nil {
 		c.tr = &http.Transport{
 		//		TLSClientConfig:    &tls.Config{RootCAs: pool},
@@ -224,7 +233,7 @@ func (c *Connection) Authenticate() (err error) {
 	if err != nil {
 		return
 	}
-	req.Header.Set("User-Agent", USER_AGENT)
+	req.Header.Set("User-Agent", c.UserAgent)
 	req.Header.Set("X-Auth-Key", c.ApiKey)
 	req.Header.Set("X-Auth-User", c.UserName)
 	var resp *http.Response
@@ -289,7 +298,7 @@ type storageParams struct {
 func (c *Connection) storage(p storageParams) (resp *http.Response, headers Headers, err error) {
 	retries := p.retries
 	if retries == 0 {
-		retries = DEFAULT_RETRIES
+		retries = c.Retries
 	}
 	for {
 		if !c.Authenticated() {
@@ -321,7 +330,7 @@ func (c *Connection) storage(p storageParams) (resp *http.Response, headers Head
 				req.Header.Add(k, v)
 			}
 		}
-		req.Header.Add("User-Agent", USER_AGENT)
+		req.Header.Add("User-Agent", DefaultUserAgent)
 		req.Header.Add("X-Auth-Token", c.auth_token)
 		// FIXME body of request?
 		resp, err = c.client.Do(req)

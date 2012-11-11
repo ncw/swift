@@ -20,21 +20,18 @@ Make more api compatible with python cloudfiles?
 Timeout?
 
 Retry operations on timeout / network errors?
-
-Put USER_AGENT and RETRIES into Connection
+- also 408 error
 
 Make Connection thread safe - whenever it is changed take a write lock whenever it is read from a read lock
 
 Add extra headers field to Connection (for via etc)
-
-Could potentially store response in Connection but would make it thread unsafe
 
 Make errors use an error heirachy then can catch them with a type assertion
 
  Error(...)
  ObjectCorrupted{ Error }
 
-Make a Debug flag for logging stuff
+Make a Debug flag in connection for logging stuff
 
 Object If-Match, If-None-Match, If-Modified-Since, If-Unmodified-Since etc
 
