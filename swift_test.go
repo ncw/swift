@@ -2,7 +2,7 @@
 //
 // It needs access to a real swift server which should be set up in
 // the environment variables SWIFT_API_USER, SWIFT_API_KEY and
-// SWIFT_AUTH_URL - see README-test for more info
+// SWIFT_AUTH_URL - see Testing in README.md for more info
 //
 // The functions are designed to run in order and create things the
 // next function tests.  This means that if it goes wrong it is likely
