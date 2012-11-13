@@ -1,6 +1,8 @@
 Notes on Go Swift
 =================
 
+Test that time works if pc timezone is not GMT
+
 Make a container struct so these could be methods on it?
 
 // FIXME make noResponse check for 204?
