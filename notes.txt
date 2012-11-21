@@ -47,3 +47,6 @@ Copy/Rename object
 Swift client retries and backs off for all types of errors
 
 Write a script which uses this and replicates the functionality of swift tool
+
+path parameter is missing in the docs for Objects() but supported by the server
+  is it deprecated?  or are the docs faults?
