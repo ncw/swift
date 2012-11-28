@@ -114,6 +114,42 @@ func floatStringToNs(s string) (int64, error) {
 	return strconv.ParseInt(s, 10, 64)
 }
 
+// FloatStringToTime converts a floating point number string to a time.Time
+//
+// The string is floating point number of seconds since the epoch
+// (Unix time).  The number should be in fixed point format (not
+// exponential), eg "1354040105.123456789" which represents the time
+// "2012-11-27T18:15:05.123456789Z"
+//
+// Some care is taken to preserve all the accuracy in the time.Time
+// (which wouldn't happen with a naive conversion through float64) so
+// a round trip conversion won't change the data.
+//
+// If an error is returned then time will be returned as the zero time.
+func FloatStringToTime(s string) (t time.Time, err error) {
+	ns, err := floatStringToNs(s)
+	if err != nil {
+		return
+	}
+	t = time.Unix(0, ns)
+	return
+}
+
+// TimeToFloatString converts a time.Time object to a floating point string
+//
+// The string is floating point number of seconds since the epoch
+// (Unix time).  The number is in fixed point format (not
+// exponential), eg "1354040105.123456789" which represents the time
+// "2012-11-27T18:15:05.123456789Z".  Trailing zeros will be dropped
+// from the output.
+//
+// Some care is taken to preserve all the accuracy in the time.Time
+// (which wouldn't happen with a naive conversion through float64) so
+// a round trip conversion won't change the data.
+func TimeToFloatString(t time.Time) string {
+	return nsToFloatString(t.UnixNano())
+}
+
 // Read a modification time (mtime) from a Metadata object
 //
 // This is a defacto standard (used in the official python-swiftclient
@@ -123,12 +159,7 @@ func floatStringToNs(s string) (int64, error) {
 //
 // If an error is returned then time will be returned as the zero time.
 func (m Metadata) GetModTime() (t time.Time, err error) {
-	ns, err := floatStringToNs(m["mtime"])
-	if err != nil {
-		return
-	}
-	t = time.Unix(0, ns)
-	return
+	return FloatStringToTime(m["mtime"])
 }
 
 // Write an modification time (mtime) to a Metadata object
@@ -138,5 +169,5 @@ func (m Metadata) GetModTime() (t time.Time, err error) {
 // os.Stat) for an object.  It is stored using the key 'mtime', which
 // for example when written to an object will be 'X-Object-Meta-Mtime'.
 func (m Metadata) SetModTime(t time.Time) {
-	m["mtime"] = nsToFloatString(t.UnixNano())
+	m["mtime"] = TimeToFloatString(t)
 }
