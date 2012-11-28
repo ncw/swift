@@ -114,11 +114,12 @@ func floatStringToNs(s string) (int64, error) {
 	return strconv.ParseInt(s, 10, 64)
 }
 
-// Read a modification time (mtime) from a Metadata
+// Read a modification time (mtime) from a Metadata object
 //
-// This is a defacto standard for storing the modification time (as
-// read using os.Stat) for an object.  It is stored using the key
-// 'mtime'.
+// This is a defacto standard (used in the official python-swiftclient
+// amongst others) for storing the modification time (as read using
+// os.Stat) for an object.  It is stored using the key 'mtime', which
+// for example when written to an object will be 'X-Object-Meta-Mtime'.
 //
 // If an error is returned then time will be returned as the zero time.
 func (m Metadata) GetModTime() (t time.Time, err error) {
@@ -130,11 +131,12 @@ func (m Metadata) GetModTime() (t time.Time, err error) {
 	return
 }
 
-// Write an modification time (mtime) to a Metadata
+// Write an modification time (mtime) to a Metadata object
 //
-// This is a defacto standard for storing the modification time (as
-// read using os.Stat) for an object.  It is stored using the key
-// 'mtime'.
+// This is a defacto standard (used in the official python-swiftclient
+// amongst others) for storing the modification time (as read using
+// os.Stat) for an object.  It is stored using the key 'mtime', which
+// for example when written to an object will be 'X-Object-Meta-Mtime'.
 func (m Metadata) SetModTime(t time.Time) {
 	m["mtime"] = nsToFloatString(t.UnixNano())
 }
