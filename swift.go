@@ -429,6 +429,64 @@ func (c *Connection) Containers(opts *ContainersOpts) ([]Container, error) {
 	return containers, err
 }
 
+// containersAllOpts makes a copy of opts if set or makes a new one and
+// overrides Limit and Marker
+func containersAllOpts(opts *ContainersOpts) *ContainersOpts {
+	var newOpts ContainersOpts
+	if opts != nil {
+		newOpts = *opts
+	}
+	if newOpts.Limit == 0 {
+		newOpts.Limit = 10000
+	}
+	newOpts.Marker = ""
+	return &newOpts
+}
+
+// ContainersAll is like Containers but it returns all the Containers
+//
+// It calls Containers multiple times using the Marker parameter
+//
+// It has a default Limit parameter but you may pass in your own
+func (c *Connection) ContainersAll(opts *ContainersOpts) ([]Container, error) {
+	opts = containersAllOpts(opts)
+	containers := make([]Container, 0)
+	for {
+		newContainers, err := c.Containers(opts)
+		if err != nil {
+			return nil, err
+		}
+		containers = append(containers, newContainers...)
+		if len(newContainers) < opts.Limit {
+			break
+		}
+		opts.Marker = newContainers[len(newContainers)-1].Name
+	}
+	return containers, nil
+}
+
+// ContainerNamesAll is like ContainerNamess but it returns all the Containers
+//
+// It calls ContainerNames multiple times using the Marker parameter
+//
+// It has a default Limit parameter but you may pass in your own
+func (c *Connection) ContainerNamesAll(opts *ContainersOpts) ([]string, error) {
+	opts = containersAllOpts(opts)
+	containers := make([]string, 0)
+	for {
+		newContainers, err := c.ContainerNames(opts)
+		if err != nil {
+			return nil, err
+		}
+		containers = append(containers, newContainers...)
+		if len(newContainers) < opts.Limit {
+			break
+		}
+		opts.Marker = newContainers[len(newContainers)-1]
+	}
+	return containers, nil
+}
+
 /* ------------------------------------------------------------ */
 
 // ObjectOpts is options for Objects() and ObjectNames()
@@ -546,6 +604,64 @@ func (c *Connection) Objects(container string, opts *ObjectsOpts) ([]Object, err
 		}
 	}
 	return objects, err
+}
+
+// objectsAllOpts makes a copy of opts if set or makes a new one and
+// overrides Limit and Marker
+func objectsAllOpts(opts *ObjectsOpts) *ObjectsOpts {
+	var newOpts ObjectsOpts
+	if opts != nil {
+		newOpts = *opts
+	}
+	if newOpts.Limit == 0 {
+		newOpts.Limit = 10000
+	}
+	newOpts.Marker = ""
+	return &newOpts
+}
+
+// ObjectsAll is like Objects but it returns all the Objects
+//
+// It calls Objects multiple times using the Marker parameter
+//
+// It has a default Limit parameter but you may pass in your own
+func (c *Connection) ObjectsAll(container string, opts *ObjectsOpts) ([]Object, error) {
+	opts = objectsAllOpts(opts)
+	objects := make([]Object, 0)
+	for {
+		newObjects, err := c.Objects(container, opts)
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, newObjects...)
+		if len(newObjects) < opts.Limit {
+			break
+		}
+		opts.Marker = newObjects[len(newObjects)-1].Name
+	}
+	return objects, nil
+}
+
+// ObjectNamesAll is like ObjectNamess but it returns all the Objects
+//
+// It calls ObjectNames multiple times using the Marker parameter
+//
+// It has a default Limit parameter but you may pass in your own
+func (c *Connection) ObjectNamesAll(container string, opts *ObjectsOpts) ([]string, error) {
+	opts = objectsAllOpts(opts)
+	objects := make([]string, 0)
+	for {
+		newObjects, err := c.ObjectNames(container, opts)
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, newObjects...)
+		if len(newObjects) < opts.Limit {
+			break
+		}
+		opts.Marker = newObjects[len(newObjects)-1]
+	}
+	return objects, nil
 }
 
 // Account contains information about this account.

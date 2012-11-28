@@ -144,6 +144,44 @@ func TestContainer(t *testing.T) {
 	//fmt.Println(headers)
 }
 
+func TestContainersAll(t *testing.T) {
+	containers1, err := c.ContainersAll(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	containers2, err := c.Containers(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(containers1) != len(containers2) {
+		t.Fatal("Wrong length")
+	}
+	for i := range containers1 {
+		if containers1[i] != containers2[i] {
+			t.Fatal("Not the same")
+		}
+	}
+}
+
+func TestContainersAllWithLimit(t *testing.T) {
+	containers1, err := c.ContainersAll(&swift.ContainersOpts{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	containers2, err := c.Containers(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(containers1) != len(containers2) {
+		t.Fatal("Wrong length")
+	}
+	for i := range containers1 {
+		if containers1[i] != containers2[i] {
+			t.Fatal("Not the same")
+		}
+	}
+}
+
 func TestContainerUpdate(t *testing.T) {
 	err := c.ContainerUpdate(CONTAINER, m2.ContainerHeaders())
 	if err != nil {
@@ -174,6 +212,44 @@ func TestContainerNames(t *testing.T) {
 		t.Errorf("Didn't find container %q in listing %q", CONTAINER, containers)
 	}
 	// fmt.Println(containers)
+}
+
+func TestContainerNamesAll(t *testing.T) {
+	containers1, err := c.ContainerNamesAll(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	containers2, err := c.ContainerNames(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(containers1) != len(containers2) {
+		t.Fatal("Wrong length")
+	}
+	for i := range containers1 {
+		if containers1[i] != containers2[i] {
+			t.Fatal("Not the same")
+		}
+	}
+}
+
+func TestContainerNamesAllWithLimit(t *testing.T) {
+	containers1, err := c.ContainerNamesAll(&swift.ContainersOpts{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	containers2, err := c.ContainerNames(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(containers1) != len(containers2) {
+		t.Fatal("Wrong length")
+	}
+	for i := range containers1 {
+		if containers1[i] != containers2[i] {
+			t.Fatal("Not the same")
+		}
+	}
 }
 
 func TestObjectPutString(t *testing.T) {
@@ -273,6 +349,28 @@ func TestObjectNames(t *testing.T) {
 	//fmt.Println(objects)
 }
 
+func TestObjectNamesAll(t *testing.T) {
+	objects, err := c.ObjectNamesAll(CONTAINER, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 1 || objects[0] != OBJECT {
+		t.Error("Incorrect listing", objects)
+	}
+	//fmt.Println(objects)
+}
+
+func TestObjectNamesAllWithLimit(t *testing.T) {
+	objects, err := c.ObjectNamesAll(CONTAINER, &swift.ObjectsOpts{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 1 || objects[0] != OBJECT {
+		t.Error("Incorrect listing", objects)
+	}
+	//fmt.Println(objects)
+}
+
 func TestObjects(t *testing.T) {
 	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
 	if err != nil {
@@ -287,6 +385,28 @@ func TestObjects(t *testing.T) {
 	}
 	checkTime(t, object.LastModified, -10, 10)
 	// fmt.Println(objects)
+}
+
+func TestObjectsAll(t *testing.T) {
+	objects, err := c.ObjectsAll(CONTAINER, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 1 || objects[0].Name != OBJECT {
+		t.Error("Incorrect listing", objects)
+	}
+	//fmt.Println(objects)
+}
+
+func TestObjectsAllWithLimit(t *testing.T) {
+	objects, err := c.ObjectsAll(CONTAINER, &swift.ObjectsOpts{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 1 || objects[0].Name != OBJECT {
+		t.Error("Incorrect listing", objects)
+	}
+	//fmt.Println(objects)
 }
 
 func TestObjectNamesWithPath(t *testing.T) {

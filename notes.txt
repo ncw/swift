@@ -11,8 +11,6 @@ Rename to go-swift to match user agent string?
 
 Reconnect on auth error - 401 when token expires isn't tested
 
-Implement higher level read all files / containers which uses limit and marker to loop
-
 Make more api compatible with python cloudfiles?
 
 Retry operations on timeout / network errors?
