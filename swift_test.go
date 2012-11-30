@@ -439,6 +439,32 @@ func TestObjectDelete(t *testing.T) {
 	}
 }
 
+func TestObjectDifficultName(t *testing.T) {
+	const name = `hello? sausage/êé/Hello, 世界/ " ' @ < > & ?/`
+	err := c.ObjectPutString(CONTAINER, name, CONTENTS, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects, err := c.ObjectNamesAll(CONTAINER, nil)
+	if err != nil {
+		t.Error(err)
+	}
+	found := false
+	for _, object := range objects {
+		if object == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Couldn't find %q in listing %q", name, objects)
+	}
+	err = c.ObjectDelete(CONTAINER, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestContainerDelete(t *testing.T) {
 	err := c.ContainerDelete(CONTAINER)
 	if err != nil {

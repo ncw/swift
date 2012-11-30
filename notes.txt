@@ -43,3 +43,7 @@ Copy/Rename object
 Swift client retries and backs off for all types of errors
 
 Make Timeout work as well as ConnectionTimeout
+
+Make a version of ObjectsAll which sends the result down a channel.
+Use much smaller block sizes (100 or 1000 say) so can improve
+concurrency.

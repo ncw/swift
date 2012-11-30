@@ -270,21 +270,22 @@ func (c *Connection) storage(p storageOpts) (resp *http.Response, headers Header
 				return
 			}
 		}
-		url := c.storageUrl
+		var url *url.URL
+		url, err = url.Parse(c.storageUrl)
+		if err != nil {
+			return
+		}
 		if p.container != "" {
-			url += "/" + p.container
+			url.Path += "/" + p.container
 			if p.objectName != "" {
-				url += "/" + p.objectName
+				url.Path += "/" + p.objectName
 			}
 		}
 		if p.parameters != nil {
-			encoded := p.parameters.Encode()
-			if encoded != "" {
-				url += "?" + encoded
-			}
+			url.RawQuery = p.parameters.Encode()
 		}
 		var req *http.Request
-		req, err = http.NewRequest(p.operation, url, p.body)
+		req, err = http.NewRequest(p.operation, url.String(), p.body)
 		if err != nil {
 			return
 		}
