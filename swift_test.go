@@ -11,8 +11,10 @@
 package swift_test
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/ncw/swift"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -268,6 +270,50 @@ func TestObjectGetString(t *testing.T) {
 		t.Error("Contents wrong")
 	}
 	//fmt.Println(contents)
+}
+
+func TestObjectOpen(t *testing.T) {
+	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	n, err := io.Copy(&buf, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != int64(len(CONTENTS)) {
+		t.Fatal("Wrong length", n, len(CONTENTS))
+	}
+	if buf.String() != CONTENTS {
+		t.Error("Contents wrong")
+	}
+	err = file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestObjectOpenPartial(t *testing.T) {
+	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	n, err := io.CopyN(&buf, file, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatal("Wrong length", n, len(CONTENTS))
+	}
+	if buf.String() != CONTENTS[:1] {
+		t.Error("Contents wrong")
+	}
+	err = file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestObjectUpdate(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"net"
@@ -886,16 +887,80 @@ func (c *Connection) ObjectPutString(container string, objectName string, conten
 	return
 }
 
-// ObjectGet gets the object into the io.Writer contents.
+// ObjectOpenFile represents a swift object open for reading
+type ObjectOpenFile struct {
+	resp      *http.Response
+	body      io.Reader
+	checkHash bool
+	hash      hash.Hash
+	bytes     int64
+	eof       bool
+}
+
+// Read bytes from the object - see io.Reader
+func (file *ObjectOpenFile) Read(p []byte) (n int, err error) {
+	n, err = file.body.Read(p)
+	file.bytes += int64(n)
+	if err == io.EOF {
+		file.eof = true
+	}
+	return
+}
+
+// Close the object and checks the length and md5sum if it was
+// required and all the object was read
+func (file *ObjectOpenFile) Close() (err error) {
+	// Close the body at the end
+	defer checkClose(file.resp.Body, &err)
+
+	// If not end of file then can't check anything
+	if !file.eof {
+		return
+	}
+
+	// Check the MD5 sum if requested
+	if file.checkHash {
+		receivedMd5 := strings.ToLower(file.resp.Header.Get("Etag"))
+		calculatedMd5 := fmt.Sprintf("%x", file.hash.Sum(nil))
+		if receivedMd5 != calculatedMd5 {
+			err = ObjectCorrupted
+			return
+		}
+	}
+
+	// Check to see we read the correct number of bytes
+	if file.resp.Header.Get("Content-Length") != "" {
+		var objectLength int64
+		objectLength, err = getInt64FromHeader(file.resp, "Content-Length")
+		if err != nil {
+			return
+		}
+		if objectLength != file.bytes {
+			err = ObjectCorrupted
+			return
+		}
+	}
+	return
+}
+
+// Check it satisfies the interface
+var _ io.ReadCloser = &ObjectOpenFile{}
+
+// ObjectOpen returns an ObjectOpenFile for reading the contents of
+// the object.  This satisfies the io.ReadCloser interface.
+//
+// You must call Close() on contents when finished
 // 
 // Returns the headers of the response.
 // 
 // If checkHash is true then it will calculate the md5sum of the file
 // as it is being received and check it against that returned from the
-// server.  If it is wrong then it will return ObjectCorrupted.
+// server.  If it is wrong then it will return ObjectCorrupted. It
+// will also check the length returned. No checking will be done if
+// you don't read all the contents.
 //
 // headers["Content-Type"] will give the content type if desired.
-func (c *Connection) ObjectGet(container string, objectName string, contents io.Writer, checkHash bool, h Headers) (headers Headers, err error) {
+func (c *Connection) ObjectOpen(container string, objectName string, checkHash bool, h Headers) (contents *ObjectOpenFile, headers Headers, err error) {
 	var resp *http.Response
 	resp, headers, err = c.storage(storageOpts{
 		container:  container,
@@ -907,41 +972,30 @@ func (c *Connection) ObjectGet(container string, objectName string, contents io.
 	if err != nil {
 		return
 	}
-	defer checkClose(resp.Body, &err)
-	hash := md5.New()
-	var body io.Writer = contents
+	contents = &ObjectOpenFile{resp: resp, checkHash: checkHash, body: resp.Body}
 	if checkHash {
-		body = io.MultiWriter(contents, hash)
+		contents.hash = md5.New()
+		contents.body = io.TeeReader(resp.Body, contents.hash)
 	}
-	var written int64
-	written, err = io.Copy(body, resp.Body)
+	return
+}
+
+// ObjectGet gets the object into the io.Writer contents.
+// 
+// Returns the headers of the response.
+// 
+// If checkHash is true then it will calculate the md5sum of the file
+// as it is being received and check it against that returned from the
+// server.  If it is wrong then it will return ObjectCorrupted.
+//
+// headers["Content-Type"] will give the content type if desired.
+func (c *Connection) ObjectGet(container string, objectName string, contents io.Writer, checkHash bool, h Headers) (headers Headers, err error) {
+	file, headers, err := c.ObjectOpen(container, objectName, checkHash, h)
 	if err != nil {
 		return
 	}
-
-	// Check the MD5 sum if requested
-	if checkHash {
-		receivedMd5 := strings.ToLower(resp.Header.Get("Etag"))
-		calculatedMd5 := fmt.Sprintf("%x", hash.Sum(nil))
-		if receivedMd5 != calculatedMd5 {
-			err = ObjectCorrupted
-			return
-		}
-	}
-
-	// Check to see we wrote the correct number of bytes
-	if resp.Header.Get("Content-Length") != "" {
-		var objectLength int64
-		objectLength, err = getInt64FromHeader(resp, "Content-Length")
-		if err != nil {
-			return
-		}
-		if objectLength != written {
-			err = ObjectCorrupted
-			return
-		}
-	}
-
+	defer checkClose(file, &err)
+	_, err = io.Copy(contents, file)
 	return
 }
 
