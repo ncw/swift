@@ -10,7 +10,7 @@ import (
 
 func Example() {
 	// Create a connection
-	c = swift.Connection{
+	c := swift.Connection{
 		UserName: "user",
 		ApiKey:   "key",
 		AuthUrl:  "auth_url",
@@ -24,4 +24,18 @@ func Example() {
 	containers, err := c.ContainerNames(nil)
 	fmt.Println(containers)
 	// etc...
+}
+
+var container string
+
+func ExampleConnection_ObjectsWalk() {
+	objects := make([]string, 0)
+	err := c.ObjectsWalk(container, nil, func(opts *swift.ObjectsOpts) (interface{}, error) {
+		newObjects, err := c.ObjectNames(container, opts)
+		if err == nil {
+			objects = append(objects, newObjects...)
+		}
+		return newObjects, err
+	})
+	fmt.Println("Found all the objects", objects, err)
 }

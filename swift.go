@@ -20,9 +20,12 @@ import (
 )
 
 const (
-	DefaultUserAgent = "goswift/1.0"         // Default user agent
-	DefaultRetries   = 3                     // Default number of retries on token expiry
-	TimeFormat       = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
+	DefaultUserAgent    = "goswift/1.0"         // Default user agent
+	DefaultRetries      = 3                     // Default number of retries on token expiry
+	TimeFormat          = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
+	allContainersLimit  = 10000                 // Number of containers to fetch at once
+	allObjectsLimit     = 10000                 // Number objects to fetch at once
+	allObjectsChanLimit = 1000                  // ...when fetching to a channel
 )
 
 // Connection holds the details of the connection to the swift server.
@@ -439,7 +442,7 @@ func containersAllOpts(opts *ContainersOpts) *ContainersOpts {
 		newOpts = *opts
 	}
 	if newOpts.Limit == 0 {
-		newOpts.Limit = 10000
+		newOpts.Limit = allContainersLimit
 	}
 	newOpts.Marker = ""
 	return &newOpts
@@ -610,60 +613,96 @@ func (c *Connection) Objects(container string, opts *ObjectsOpts) ([]Object, err
 
 // objectsAllOpts makes a copy of opts if set or makes a new one and
 // overrides Limit and Marker
-func objectsAllOpts(opts *ObjectsOpts) *ObjectsOpts {
+func objectsAllOpts(opts *ObjectsOpts, Limit int) *ObjectsOpts {
 	var newOpts ObjectsOpts
 	if opts != nil {
 		newOpts = *opts
 	}
 	if newOpts.Limit == 0 {
-		newOpts.Limit = 10000
+		newOpts.Limit = Limit
 	}
 	newOpts.Marker = ""
 	return &newOpts
 }
 
-// ObjectsAll is like Objects but it returns all the Objects
+// A closure defined by the caller to iterate through all objects
 //
-// It calls Objects multiple times using the Marker parameter
+// Call Objects or ObjectNames from here with the *ObjectOpts passed in
+//
+// Do whatever is required with the results then return them
+type ObjectsWalkFn func(*ObjectsOpts) (interface{}, error)
+
+// ObjectsWalk is uses to iterate through all the objects in chunks as
+// returned by Objects or ObjectNames using the Marker and Limit
+// parameters in the ObjectsOpts.
+//
+// Pass in a closure `walkFn` which calls Objects or ObjectNames with
+// the *ObjectsOpts passed to it and does something with the results.
+//
+// Errors will be returned from this function
 //
 // It has a default Limit parameter but you may pass in your own
-func (c *Connection) ObjectsAll(container string, opts *ObjectsOpts) ([]Object, error) {
-	opts = objectsAllOpts(opts)
-	objects := make([]Object, 0)
+func (c *Connection) ObjectsWalk(container string, opts *ObjectsOpts, walkFn ObjectsWalkFn) error {
+	opts = objectsAllOpts(opts, allObjectsChanLimit)
 	for {
-		newObjects, err := c.Objects(container, opts)
+		objects, err := walkFn(opts)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		objects = append(objects, newObjects...)
-		if len(newObjects) < opts.Limit {
+		var n int
+		var last string
+		switch objects := objects.(type) {
+		case []string:
+			n = len(objects)
+			if n > 0 {
+				last = objects[len(objects)-1]
+			}
+		case []Object:
+			n = len(objects)
+			if n > 0 {
+				last = objects[len(objects)-1].Name
+			}
+		default:
+			panic("Unknown type returned to ObjectsWalk")
+		}
+		if n < opts.Limit {
 			break
 		}
-		opts.Marker = newObjects[len(newObjects)-1].Name
+		opts.Marker = last
 	}
-	return objects, nil
+	return nil
 }
 
-// ObjectNamesAll is like ObjectNamess but it returns all the Objects
+// ObjectsAll is like Objects but it returns an unlimited number of Objects in a slice
+//
+// It calls Objects multiple times using the Marker parameter
+func (c *Connection) ObjectsAll(container string, opts *ObjectsOpts) ([]Object, error) {
+	objects := make([]Object, 0)
+	err := c.ObjectsWalk(container, opts, func(opts *ObjectsOpts) (interface{}, error) {
+		newObjects, err := c.Objects(container, opts)
+		if err == nil {
+			objects = append(objects, newObjects...)
+		}
+		return newObjects, err
+	})
+	return objects, err
+}
+
+// ObjectNamesAll is like ObjectNames but it returns all the Objects
 //
 // It calls ObjectNames multiple times using the Marker parameter
 //
 // It has a default Limit parameter but you may pass in your own
 func (c *Connection) ObjectNamesAll(container string, opts *ObjectsOpts) ([]string, error) {
-	opts = objectsAllOpts(opts)
 	objects := make([]string, 0)
-	for {
+	err := c.ObjectsWalk(container, opts, func(opts *ObjectsOpts) (interface{}, error) {
 		newObjects, err := c.ObjectNames(container, opts)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			objects = append(objects, newObjects...)
 		}
-		objects = append(objects, newObjects...)
-		if len(newObjects) < opts.Limit {
-			break
-		}
-		opts.Marker = newObjects[len(newObjects)-1]
-	}
-	return objects, nil
+		return newObjects, err
+	})
+	return objects, err
 }
 
 // Account contains information about this account.

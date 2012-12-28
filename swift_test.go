@@ -417,6 +417,24 @@ func TestObjectNamesAllWithLimit(t *testing.T) {
 	//fmt.Println(objects)
 }
 
+func TestObjectsWalk(t *testing.T) {
+	objects := make([]string, 0)
+	err := c.ObjectsWalk(container, nil, func(opts *swift.ObjectsOpts) (interface{}, error) {
+		newObjects, err := c.ObjectNames(CONTAINER, opts)
+		if err == nil {
+			objects = append(objects, newObjects...)
+		}
+		return newObjects, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 1 || objects[0] != OBJECT {
+		t.Error("Incorrect listing", objects)
+	}
+	//fmt.Println(objects)
+}
+
 func TestObjects(t *testing.T) {
 	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
 	if err != nil {
