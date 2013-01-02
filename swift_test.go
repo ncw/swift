@@ -29,6 +29,7 @@ var (
 const (
 	CONTAINER    = "GoSwiftUnitTest"
 	OBJECT       = "test_object"
+	OBJECT2      = "test_object2"
 	CONTENTS     = "12345"
 	CONTENT_SIZE = int64(len(CONTENTS))
 	CONTENT_MD5  = "827ccb0eea8a706c4c34a16891f84e7b"
@@ -79,12 +80,12 @@ func compareMaps(t *testing.T, a, b map[string]string) {
 		t.Error("Maps different sizes", a, b)
 	}
 	for ka, va := range a {
-		if va != b[ka] {
+		if vb, ok := b[ka]; !ok || va != vb {
 			t.Error("Difference in key", ka, va, b[ka])
 		}
 	}
 	for kb, vb := range b {
-		if vb != a[kb] {
+		if va, ok := a[kb]; !ok || vb != va {
 			t.Error("Difference in key", kb, vb, a[kb])
 		}
 	}
@@ -490,6 +491,87 @@ func TestObjectNamesWithPath(t *testing.T) {
 		t.Error("Bad listing with path", objects)
 	}
 	// fmt.Println(objects)
+}
+
+func TestObjectCopy(t *testing.T) {
+	_, err := c.ObjectCopy(CONTAINER, OBJECT, CONTAINER, OBJECT2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = c.ObjectDelete(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestObjectCopyWithMetadata(t *testing.T) {
+	m := swift.Metadata{}
+	m["copy-special-metadata"] = "hello"
+	m["hello"] = "3"
+	h := m.ObjectHeaders()
+	h["Content-Type"] = "image/jpeg"
+	_, err := c.ObjectCopy(CONTAINER, OBJECT, CONTAINER, OBJECT2, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Re-read the metadata to see if it is correct
+	_, headers, err := c.Object(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headers["Content-Type"] != "image/jpeg" {
+		t.Error("Didn't change content type")
+	}
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "3", "potato-salad": "", "copy-special-metadata": "hello"})
+	err = c.ObjectDelete(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestObjectMove(t *testing.T) {
+	err := c.ObjectMove(CONTAINER, OBJECT, CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = c.Object(CONTAINER, OBJECT)
+	if err != swift.ObjectNotFound {
+		t.Fatal("Expecting object not found not", err)
+	}
+	_, _, err = c.Object(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = c.ObjectMove(CONTAINER, OBJECT2, CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = c.Object(CONTAINER, OBJECT2)
+	if err != swift.ObjectNotFound {
+		t.Fatal("Expecting object not found not", err)
+	}
+	_, headers, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "", "potato-salad": ""})
+}
+
+func TestObjectUpdateContentType(t *testing.T) {
+	err := c.ObjectUpdateContentType(CONTAINER, OBJECT, "text/potato")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Re-read the metadata to see if it is correct
+	_, headers, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headers["Content-Type"] != "text/potato" {
+		t.Error("Didn't change content type")
+	}
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "", "potato-salad": ""})
 }
 
 func TestObjectDelete(t *testing.T) {

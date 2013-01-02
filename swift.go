@@ -1146,3 +1146,57 @@ func (c *Connection) ObjectUpdate(container string, objectName string, h Headers
 	})
 	return err
 }
+
+// ObjectCopy does a server side copy of an object to a new position
+//
+// All metadata is preserved.  If metadata is set in the headers then
+// it overrides the old metadata on the copied object.
+//
+// The destination container must exist before the copy.
+//
+// You can use this to copy an object to itself - this is the only way
+// to update the content type of an object.
+func (c *Connection) ObjectCopy(srcContainer string, srcObjectName string, dstContainer string, dstObjectName string, h Headers) (headers Headers, err error) {
+	// Meta stuff
+	extraHeaders := map[string]string{
+		"Destination": dstContainer + "/" + dstObjectName,
+	}
+	for key, value := range h {
+		extraHeaders[key] = value
+	}
+	_, headers, err = c.storage(storageOpts{
+		container:  srcContainer,
+		objectName: srcObjectName,
+		operation:  "COPY",
+		errorMap:   objectErrorMap,
+		noResponse: true,
+		headers:    extraHeaders,
+	})
+	return
+}
+
+// ObjectMove does a server side move of an object to a new position
+//
+// This is a convenience method which calls ObjectCopy then ObjectDelete
+//
+// All metadata is preserved.
+//
+// The destination container must exist before the copy.
+func (c *Connection) ObjectMove(srcContainer string, srcObjectName string, dstContainer string, dstObjectName string) (err error) {
+	_, err = c.ObjectCopy(srcContainer, srcObjectName, dstContainer, dstObjectName, nil)
+	if err != nil {
+		return
+	}
+	return c.ObjectDelete(srcContainer, srcObjectName)
+}
+
+// ObjectUpdateContentType updates the content type of an object
+//
+// This is a convenience method which calls ObjectCopy
+//
+// All other metadata is preserved.
+func (c *Connection) ObjectUpdateContentType(container string, objectName string, contentType string) (err error) {
+	h := Headers{"Content-Type": contentType}
+	_, err = c.ObjectCopy(container, objectName, container, objectName, h)
+	return
+}
