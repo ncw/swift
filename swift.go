@@ -841,6 +841,126 @@ func (c *Connection) ContainerUpdate(container string, h Headers) error {
 
 // ------------------------------------------------------------
 
+// ObjectCreateFile represents a swift object open for writing
+type ObjectCreateFile struct {
+	checkHash  bool           // whether we are checking the hash
+	pipeReader *io.PipeReader // pipe for the caller to use
+	pipeWriter *io.PipeWriter
+	hash       hash.Hash      // hash being build up as we go along
+	done       chan bool      // signals when the upload has finished
+	resp       *http.Response // valid when done has signalled
+	err        error          // ditto
+	headers    Headers        // ditto
+}
+
+// Write bytes to the object - see io.Writer
+func (file *ObjectCreateFile) Write(p []byte) (n int, err error) {
+	if file.checkHash {
+		_, _ = file.hash.Write(p)
+	}
+	return file.pipeWriter.Write(p)
+}
+
+// Close the object and checks the md5sum if it was required.
+//
+// Also returns any other errors from the server (eg container not
+// found) so it is very important to check the errors on this method.
+func (file *ObjectCreateFile) Close() error {
+	// Close the body
+	err := file.pipeWriter.Close()
+	if err != nil {
+		return err
+	}
+
+	// Wait for the HTTP operation to complete
+	<-file.done
+
+	// Check errors
+	if file.err != nil {
+		return file.err
+	}
+	if file.checkHash {
+		receivedMd5 := strings.ToLower(file.headers["Etag"])
+		calculatedMd5 := fmt.Sprintf("%x", file.hash.Sum(nil))
+		if receivedMd5 != calculatedMd5 {
+			return ObjectCorrupted
+		}
+	}
+	return nil
+}
+
+// Check it satisfies the interface
+var _ io.WriteCloser = &ObjectCreateFile{}
+
+// objectPutHeaders create a set of headers for a PUT
+//
+// checkHash may be changed
+func objectPutHeaders(checkHash *bool, Hash string, contentType string, h Headers) Headers {
+	if contentType == "" {
+		// http.DetectContentType FIXME
+		contentType = "application/octet-stream" // FIXME
+	}
+	// Meta stuff
+	extraHeaders := map[string]string{
+		"Content-Type": contentType,
+	}
+	for key, value := range h {
+		extraHeaders[key] = value
+	}
+	if Hash != "" {
+		extraHeaders["Etag"] = Hash
+		*checkHash = false // the server will do it
+	}
+	return extraHeaders
+}
+
+// ObjectCreate creates or updates the object in the container.  It
+// returns an io.WriteCloser you should write the contents to.  You
+// MUST call Close() on it and you MUST check the error return from
+// Close().
+//
+// If checkHash is True then it will calculate the MD5 Hash of the
+// file as it is being uploaded and check it against that returned
+// from the server.  If it is wrong then it will return
+// ObjectCorrupted on Close()
+// 
+// If you know the MD5 hash of the object ahead of time then set the
+// Hash parameter and it will be sent to the server (as an Etag
+// header) and the server will check the MD5 itself after the upload,
+// and this will return ObjectCorrupted on Close() if it is incorrect.
+//
+// If you don't want any error protection (not recommended) then set
+// checkHash to false and Hash to "".
+// 
+// If contentType is set it will be used, otherwise one will be
+// guessed from the name using the mimetypes module FIXME.
+func (c *Connection) ObjectCreate(container string, objectName string, checkHash bool, Hash string, contentType string, h Headers) (file *ObjectCreateFile, err error) {
+	extraHeaders := objectPutHeaders(&checkHash, Hash, contentType, h)
+	pipeReader, pipeWriter := io.Pipe()
+	file = &ObjectCreateFile{
+		hash:       md5.New(),
+		checkHash:  checkHash,
+		pipeReader: pipeReader,
+		pipeWriter: pipeWriter,
+		done:       make(chan bool),
+	}
+	// Run the PUT in the background piping it data
+	go func() {
+		file.resp, file.headers, file.err = c.storage(storageOpts{
+			container:  container,
+			objectName: objectName,
+			operation:  "PUT",
+			headers:    extraHeaders,
+			body:       pipeReader,
+			noResponse: true,
+			errorMap:   objectErrorMap,
+		})
+		// Signal finished
+		file.done <- true
+	}()
+	return
+}
+
 // ObjectPut creates or updates the path in the container from
 // contents.  contents should be an open io.Reader which will have all
 // its contents read.
@@ -864,28 +984,13 @@ func (c *Connection) ContainerUpdate(container string, h Headers) error {
 // guessed from the name using the mimetypes module FIXME.
 func (c *Connection) ObjectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers) (headers Headers, err error) {
 	// FIXME I think this will do chunked transfer since we aren't providing a content length
-	if contentType == "" {
-		// http.DetectContentType FIXME
-		contentType = "application/octet-stream" // FIXME
-	}
-	// Meta stuff
-	extraHeaders := map[string]string{
-		"Content-Type": contentType,
-	}
-	for key, value := range h {
-		extraHeaders[key] = value
-	}
-	if Hash != "" {
-		extraHeaders["Etag"] = Hash
-		checkHash = false // the server will do it
-	}
+	extraHeaders := objectPutHeaders(&checkHash, Hash, contentType, h)
 	hash := md5.New()
 	var body io.Reader = contents
 	if checkHash {
 		body = io.TeeReader(contents, hash)
 	}
-	var resp *http.Response
-	resp, headers, err = c.storage(storageOpts{
+	_, headers, err = c.storage(storageOpts{
 		container:  container,
 		objectName: objectName,
 		operation:  "PUT",
@@ -898,7 +1003,7 @@ func (c *Connection) ObjectPut(container string, objectName string, contents io.
 		return
 	}
 	if checkHash {
-		receivedMd5 := strings.ToLower(resp.Header.Get("Etag"))
+		receivedMd5 := strings.ToLower(headers["Etag"])
 		calculatedMd5 := fmt.Sprintf("%x", hash.Sum(nil))
 		if receivedMd5 != calculatedMd5 {
 			err = ObjectCorrupted

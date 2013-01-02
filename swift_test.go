@@ -12,6 +12,7 @@ package swift_test
 
 import (
 	"bytes"
+	"crypto/md5"
 	"fmt"
 	"github.com/ncw/swift"
 	"io"
@@ -262,6 +263,68 @@ func TestObjectPutString(t *testing.T) {
 	}
 }
 
+func TestObjectCreate(t *testing.T) {
+	out, err := c.ObjectCreate(CONTAINER, OBJECT2, true, "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := &bytes.Buffer{}
+	hash := md5.New()
+	out2 := io.MultiWriter(out, buf, hash)
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(out2, "%d %s\n", i, CONTENTS)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+
+	// Now with hash instead
+	out, err = c.ObjectCreate(CONTAINER, OBJECT2, false, fmt.Sprintf("%x", hash.Sum(nil)), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = out.Write(buf.Bytes())
+	if err != nil {
+		t.Error(err)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	contents, err = c.ObjectGetString(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+
+	// Now with bad hash
+	out, err = c.ObjectCreate(CONTAINER, OBJECT2, false, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = out.Close()
+	if err != swift.ObjectCorrupted {
+		t.Error("Expecting object corrupted not", err)
+	}
+
+	// Tidy up
+	err = c.ObjectDelete(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestObjectGetString(t *testing.T) {
 	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
 	if err != nil {
@@ -338,7 +401,7 @@ func TestObject(t *testing.T) {
 	}
 	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "1", "potato-salad": "2"})
 	if object.Name != OBJECT || object.Bytes != CONTENT_SIZE || object.ContentType != "application/octet-stream" || object.Hash != CONTENT_MD5 || object.PseudoDirectory != false || object.SubDir != "" {
-		t.Error("Bad object info %q", object)
+		t.Error("Bad object info", object)
 	}
 	checkTime(t, object.LastModified, -10, 10)
 }
@@ -446,7 +509,7 @@ func TestObjects(t *testing.T) {
 	}
 	object := objects[0]
 	if object.Name != OBJECT || object.Bytes != CONTENT_SIZE || object.ContentType != "application/octet-stream" || object.Hash != CONTENT_MD5 || object.PseudoDirectory != false || object.SubDir != "" {
-		t.Error("Bad object info %q", object)
+		t.Error("Bad object info", object)
 	}
 	checkTime(t, object.LastModified, -10, 10)
 	// fmt.Println(objects)
