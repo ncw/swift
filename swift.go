@@ -11,9 +11,11 @@ import (
 	"hash"
 	"io"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -300,7 +302,6 @@ func (c *Connection) storage(p storageOpts) (resp *http.Response, headers Header
 		}
 		req.Header.Add("User-Agent", DefaultUserAgent)
 		req.Header.Add("X-Auth-Token", c.authToken)
-		// FIXME body of request?
 		resp, err = c.client.Do(req)
 		if err != nil {
 			return
@@ -894,11 +895,15 @@ var _ io.WriteCloser = &ObjectCreateFile{}
 
 // objectPutHeaders create a set of headers for a PUT
 //
+// It guesses the contentType from the objectName if it isn't set
+//
 // checkHash may be changed
-func objectPutHeaders(checkHash *bool, Hash string, contentType string, h Headers) Headers {
+func objectPutHeaders(objectName string, checkHash *bool, Hash string, contentType string, h Headers) Headers {
 	if contentType == "" {
-		// http.DetectContentType FIXME
-		contentType = "application/octet-stream" // FIXME
+		contentType := mime.TypeByExtension(path.Ext(objectName))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
 	}
 	// Meta stuff
 	extraHeaders := map[string]string{
@@ -933,9 +938,9 @@ func objectPutHeaders(checkHash *bool, Hash string, contentType string, h Header
 // checkHash to false and Hash to "".
 // 
 // If contentType is set it will be used, otherwise one will be
-// guessed from the name using the mimetypes module FIXME.
+// guessed from objectName using mime.TypeByExtension
 func (c *Connection) ObjectCreate(container string, objectName string, checkHash bool, Hash string, contentType string, h Headers) (file *ObjectCreateFile, err error) {
-	extraHeaders := objectPutHeaders(&checkHash, Hash, contentType, h)
+	extraHeaders := objectPutHeaders(objectName, &checkHash, Hash, contentType, h)
 	pipeReader, pipeWriter := io.Pipe()
 	file = &ObjectCreateFile{
 		hash:       md5.New(),
@@ -981,10 +986,9 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 // checkHash to false and Hash to "".
 // 
 // If contentType is set it will be used, otherwise one will be
-// guessed from the name using the mimetypes module FIXME.
+// guessed from objectName using mime.TypeByExtension
 func (c *Connection) ObjectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers) (headers Headers, err error) {
-	// FIXME I think this will do chunked transfer since we aren't providing a content length
-	extraHeaders := objectPutHeaders(&checkHash, Hash, contentType, h)
+	extraHeaders := objectPutHeaders(objectName, &checkHash, Hash, contentType, h)
 	hash := md5.New()
 	var body io.Reader = contents
 	if checkHash {

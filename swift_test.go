@@ -261,6 +261,35 @@ func TestObjectPutString(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if info.ContentType != "application/octet-stream" {
+		t.Error("Bad content type", info.ContentType)
+	}
+}
+
+func TestObjectPutMimeType(t *testing.T) {
+	err := c.ObjectPutString(CONTAINER, "test.jpg", CONTENTS, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, _, err := c.Object(CONTAINER, "test.jpg")
+	if err != nil {
+		t.Error(err)
+	}
+	if info.ContentType != "image/jpeg" {
+		t.Error("Bad content type", info.ContentType)
+	}
+
+	// Tidy up
+	err = c.ObjectDelete(CONTAINER, "test.jpg")
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func TestObjectCreate(t *testing.T) {
