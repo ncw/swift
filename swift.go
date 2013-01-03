@@ -900,7 +900,7 @@ var _ io.WriteCloser = &ObjectCreateFile{}
 // checkHash may be changed
 func objectPutHeaders(objectName string, checkHash *bool, Hash string, contentType string, h Headers) Headers {
 	if contentType == "" {
-		contentType := mime.TypeByExtension(path.Ext(objectName))
+		contentType = mime.TypeByExtension(path.Ext(objectName))
 		if contentType == "" {
 			contentType = "application/octet-stream"
 		}
