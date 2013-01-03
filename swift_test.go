@@ -342,6 +342,8 @@ func TestObjectCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// FIXME: work around bug which produces 503 not 422 for empty corrupted files
+	fmt.Fprintf(out, "Sausage")
 	err = out.Close()
 	if err != swift.ObjectCorrupted {
 		t.Error("Expecting object corrupted not", err)
