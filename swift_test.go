@@ -338,7 +338,7 @@ func TestObjectCreate(t *testing.T) {
 	}
 
 	// Now with bad hash
-	out, err = c.ObjectCreate(CONTAINER, OBJECT2, false, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "", nil)
+	out, err = c.ObjectCreate(CONTAINER, OBJECT2, false, CONTENT_MD5, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,6 +403,67 @@ func TestObjectOpenPartial(t *testing.T) {
 	if buf.String() != CONTENTS[:1] {
 		t.Error("Contents wrong")
 	}
+	err = file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestObjectOpenSeek(t *testing.T) {
+
+	plan := []struct {
+		whence int
+		offset int64
+		result int64
+	}{
+		{-1, 0, 0},
+		{-1, 0, 1},
+		{-1, 0, 2},
+		{0, 0, 0},
+		{0, 0, 0},
+		{0, 1, 1},
+		{0, 2, 2},
+		{1, 0, 3},
+		{1, -2, 2},
+		{1, 1, 4},
+		{2, -1, 4},
+		{2, -3, 2},
+		{2, -2, 3},
+		{2, -5, 0},
+		{2, -4, 1},
+	}
+
+	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, p := range plan {
+		if p.whence >= 0 {
+			result, err := file.Seek(p.offset, p.whence)
+			if err != nil {
+				t.Fatal(err, p)
+			}
+			if result != p.result {
+				t.Fatal("Seek result was", result, "expecting", p.result, p)
+			}
+
+		}
+		var buf bytes.Buffer
+		n, err := io.CopyN(&buf, file, 1)
+		if err != nil {
+			t.Fatal(err, p)
+		}
+		if n != 1 {
+			t.Fatal("Wrong length", n, p)
+		}
+		actual := buf.String()
+		expected := CONTENTS[p.result : p.result+1]
+		if actual != expected {
+			t.Error("Contents wrong, expecting", expected, "got", actual, p)
+		}
+	}
+
 	err = file.Close()
 	if err != nil {
 		t.Fatal(err)

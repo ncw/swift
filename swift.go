@@ -1037,21 +1037,88 @@ func (c *Connection) ObjectPutString(container string, objectName string, conten
 
 // ObjectOpenFile represents a swift object open for reading
 type ObjectOpenFile struct {
-	resp      *http.Response
-	body      io.Reader
-	checkHash bool
-	hash      hash.Hash
-	bytes     int64
-	eof       bool
+	connection *Connection    // stored copy of Connection used in Open
+	container  string         // stored copy of container used in Open
+	objectName string         // stored copy of objectName used in Open
+	headers    Headers        // stored copy of headers used in Open
+	resp       *http.Response // http connection
+	body       io.Reader      // read data from this
+	checkHash  bool           // true if checking MD5
+	hash       hash.Hash      // currently accumulating MD5
+	bytes      int64          // number of bytes read on this connection
+	eof        bool           // whether we have read end of file
+	pos        int64          // current position when reading
+	lengthOk   bool           // whether length is valid
+	length     int64          // length of the object if read
+	seeked     bool           // whether we have seeked this file or not
 }
 
 // Read bytes from the object - see io.Reader
 func (file *ObjectOpenFile) Read(p []byte) (n int, err error) {
 	n, err = file.body.Read(p)
 	file.bytes += int64(n)
+	file.pos += int64(n)
 	if err == io.EOF {
 		file.eof = true
 	}
+	return
+}
+
+// Seek sets the offset for the next Read to offset, interpreted
+// according to whence: 0 means relative to the origin of the file, 1
+// means relative to the current offset, and 2 means relative to the
+// end. Seek returns the new offset and an Error, if any.
+//
+// Seek uses HTTP Range headers which, if the file pointer is moved,
+// will involve reopening the HTTP connection.
+//
+// Note that you can't seek to the end of a file or beyond; HTTP Range
+// requests don't support the file pointer being outside the data,
+// unlike os.File
+//
+// Seek(0, 1) will return the current file pointer.
+func (file *ObjectOpenFile) Seek(offset int64, whence int) (newPos int64, err error) {
+	switch whence {
+	case 0: // relative to start
+		newPos = offset
+	case 1: // relative to current
+		newPos = file.pos + offset
+	case 2: // relative to end
+		if !file.lengthOk {
+			return file.pos, newError(0, "Length of file unknown so can't seek from end")
+		}
+		newPos = file.length + offset
+	default:
+		panic("Unknown whence in ObjectOpenFile.Seek")
+	}
+	// If at correct position (quite likely), do nothing
+	if newPos == file.pos {
+		return
+	}
+	// Close the file...
+	file.seeked = true
+	err = file.Close()
+	if err != nil {
+		return
+	}
+	// ...and re-open with a Range header
+	if file.headers == nil {
+		file.headers = Headers{}
+	}
+	if newPos > 0 {
+		file.headers["Range"] = fmt.Sprintf("bytes=%d-", newPos)
+	} else {
+		delete(file.headers, "Range")
+	}
+	newFile, _, err := file.connection.ObjectOpen(file.container, file.objectName, false, file.headers)
+	if err != nil {
+		return
+	}
+	// Update the file
+	file.resp = newFile.resp
+	file.body = newFile.body
+	file.checkHash = false
+	file.pos = newPos
 	return
 }
 
@@ -1061,8 +1128,8 @@ func (file *ObjectOpenFile) Close() (err error) {
 	// Close the body at the end
 	defer checkClose(file.resp.Body, &err)
 
-	// If not end of file then can't check anything
-	if !file.eof {
+	// If not end of file or seeked then can't check anything
+	if !file.eof || file.seeked {
 		return
 	}
 
@@ -1077,25 +1144,20 @@ func (file *ObjectOpenFile) Close() (err error) {
 	}
 
 	// Check to see we read the correct number of bytes
-	if file.resp.Header.Get("Content-Length") != "" {
-		var objectLength int64
-		objectLength, err = getInt64FromHeader(file.resp, "Content-Length")
-		if err != nil {
-			return
-		}
-		if objectLength != file.bytes {
-			err = ObjectCorrupted
-			return
-		}
+	if file.lengthOk && file.length != file.bytes {
+		err = ObjectCorrupted
+		return
 	}
 	return
 }
 
-// Check it satisfies the interface
+// Check it satisfies the interfaces
 var _ io.ReadCloser = &ObjectOpenFile{}
+var _ io.Seeker = &ObjectOpenFile{}
 
 // ObjectOpen returns an ObjectOpenFile for reading the contents of
-// the object.  This satisfies the io.ReadCloser interface.
+// the object.  This satisfies the io.ReadCloser and the io.Seeker
+// interfaces.
 //
 // You must call Close() on contents when finished
 // 
@@ -1108,7 +1170,7 @@ var _ io.ReadCloser = &ObjectOpenFile{}
 // you don't read all the contents.
 //
 // headers["Content-Type"] will give the content type if desired.
-func (c *Connection) ObjectOpen(container string, objectName string, checkHash bool, h Headers) (contents *ObjectOpenFile, headers Headers, err error) {
+func (c *Connection) ObjectOpen(container string, objectName string, checkHash bool, h Headers) (file *ObjectOpenFile, headers Headers, err error) {
 	var resp *http.Response
 	resp, headers, err = c.storage(storageOpts{
 		container:  container,
@@ -1120,11 +1182,22 @@ func (c *Connection) ObjectOpen(container string, objectName string, checkHash b
 	if err != nil {
 		return
 	}
-	contents = &ObjectOpenFile{resp: resp, checkHash: checkHash, body: resp.Body}
-	if checkHash {
-		contents.hash = md5.New()
-		contents.body = io.TeeReader(resp.Body, contents.hash)
+	file = &ObjectOpenFile{
+		connection: c,
+		container:  container,
+		objectName: objectName,
+		headers:    h,
+		resp:       resp,
+		checkHash:  checkHash,
+		body:       resp.Body,
 	}
+	if checkHash {
+		file.hash = md5.New()
+		file.body = io.TeeReader(resp.Body, file.hash)
+	}
+	// Read Content-Length
+	file.length, err = getInt64FromHeader(resp, "Content-Length")
+	file.lengthOk = (err == nil)
 	return
 }
 
