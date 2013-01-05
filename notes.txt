@@ -1,6 +1,8 @@
 Notes on Go Swift
 =================
 
+Use httptest to make unit test rather than an integration test
+
 Make a container struct so these could be methods on it?
 
 Make noResponse check for 204?

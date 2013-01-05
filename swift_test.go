@@ -269,6 +269,33 @@ func TestObjectPutString(t *testing.T) {
 	if info.ContentType != "application/octet-stream" {
 		t.Error("Bad content type", info.ContentType)
 	}
+	if info.Bytes != CONTENT_SIZE {
+		t.Error("Bad length")
+	}
+	if info.Hash != CONTENT_MD5 {
+		t.Error("Bad length")
+	}
+}
+
+func TestObjectPutBytes(t *testing.T) {
+	err := c.ObjectPutBytes(CONTAINER, OBJECT, []byte(CONTENTS), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if info.ContentType != "application/octet-stream" {
+		t.Error("Bad content type", info.ContentType)
+	}
+	if info.Bytes != CONTENT_SIZE {
+		t.Error("Bad length")
+	}
+	if info.Hash != CONTENT_MD5 {
+		t.Error("Bad length")
+	}
 }
 
 func TestObjectPutMimeType(t *testing.T) {
@@ -362,6 +389,17 @@ func TestObjectGetString(t *testing.T) {
 		t.Fatal(err)
 	}
 	if contents != CONTENTS {
+		t.Error("Contents wrong")
+	}
+	//fmt.Println(contents)
+}
+
+func TestObjectGetBytes(t *testing.T) {
+	contents, err := c.ObjectGetBytes(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != CONTENTS {
 		t.Error("Contents wrong")
 	}
 	//fmt.Println(contents)
@@ -511,8 +549,6 @@ func TestObjectUpdate2(t *testing.T) {
 	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "", "potato-salad": ""})
 }
 
-// FIXME more tests for ObjectPut and ObjectGet
-
 func TestContainers(t *testing.T) {
 	containers, err := c.Containers(nil)
 	if err != nil {
@@ -601,6 +637,84 @@ func TestObjects(t *testing.T) {
 	}
 	object := objects[0]
 	if object.Name != OBJECT || object.Bytes != CONTENT_SIZE || object.ContentType != "application/octet-stream" || object.Hash != CONTENT_MD5 || object.PseudoDirectory != false || object.SubDir != "" {
+		t.Error("Bad object info", object)
+	}
+	checkTime(t, object.LastModified, -10, 10)
+	// fmt.Println(objects)
+}
+
+func TestObjectsDirectory(t *testing.T) {
+	err := c.ObjectPutString(CONTAINER, "directory", "", "application/directory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.ObjectDelete(CONTAINER, "directory")
+
+	// Look for the directory object and check we aren't confusing
+	// it with a pseudo directory object
+	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 2 {
+		t.Fatal("Should only be 2 objects")
+	}
+	found := false
+	for i := range objects {
+		object := objects[i]
+		if object.Name == "directory" {
+			found = true
+			if object.Bytes != 0 || object.ContentType != "application/directory" || object.Hash != "d41d8cd98f00b204e9800998ecf8427e" || object.PseudoDirectory != false || object.SubDir != "" {
+				t.Error("Bad object info", object)
+			}
+			checkTime(t, object.LastModified, -10, 10)
+		}
+	}
+	if !found {
+		t.Error("Didn't find directory object")
+	}
+	// fmt.Println(objects)
+}
+
+func TestObjectsPseudoDirectory(t *testing.T) {
+	err := c.ObjectPutString(CONTAINER, "directory/puppy.jpg", "cute puppy", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.ObjectDelete(CONTAINER, "directory/puppy.jpg")
+
+	// Look for the pseudo directory
+	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 2 {
+		t.Fatal("Should only be 2 objects", objects)
+	}
+	found := false
+	for i := range objects {
+		object := objects[i]
+		if object.Name == "directory/" {
+			found = true
+			if object.Bytes != 0 || object.ContentType != "application/directory" || object.Hash != "" || object.PseudoDirectory != true || object.SubDir != "directory/" && object.LastModified.IsZero() {
+				t.Error("Bad object info", object)
+			}
+		}
+	}
+	if !found {
+		t.Error("Didn't find directory object", objects)
+	}
+
+	// Look in the pseudo directory now
+	objects, err = c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: "directory/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 1 {
+		t.Fatal("Should only be 1 object", objects)
+	}
+	object := objects[0]
+	if object.Name != "directory/puppy.jpg" || object.Bytes != 10 || object.ContentType != "image/jpeg" || object.Hash != "87a12ea22fca7f54f0cefef1da535489" || object.PseudoDirectory != false || object.SubDir != "" {
 		t.Error("Bad object info", object)
 	}
 	checkTime(t, object.LastModified, -10, 10)
