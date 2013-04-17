@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
+	//"github.com/boj/swift"
 	"github.com/ncw/swift"
 	"io"
 	"os"
@@ -877,6 +878,23 @@ func TestObjectDifficultName(t *testing.T) {
 	err = c.ObjectDelete(CONTAINER, name)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCDNEnable(t *testing.T) {
+	headers, err := c.ContainerCDNEnable(CONTAINER, 0)
+	if err != nil {
+		t.Error(err)
+	}
+	if _, ok := headers["X-Cdn-Uri"]; !ok {
+		t.Error("Failed to enable CDN for container")
+	}
+}
+
+func TestCDNDisable(t *testing.T) {
+	err := c.ContainerCDNDisable(CONTAINER) // files stick in CDN until TTL expires
+	if err != nil {
+		t.Error(err)
 	}
 }
 
