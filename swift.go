@@ -886,6 +886,18 @@ func (c *Connection) ContainerCDNDisable(container string) error {
 	return err
 }
 
+// ContainerCDNMeta returns the CDN metadata for a container.
+func (c *Connection) ContainerCDNMeta(container string) (Headers, error) {
+	_, headers, err := c.manage(requestOpts{
+		container:  container,
+		operation:  "HEAD",
+		errorMap:   containerErrorMap,
+		noResponse: true,
+		headers:    Headers{},
+	})
+	return headers, err
+}
+
 // ------------------------------------------------------------
 
 // ObjectCreateFile represents a swift object open for writing

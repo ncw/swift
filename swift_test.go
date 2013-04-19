@@ -14,7 +14,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
-	//"github.com/boj/swift"
 	"github.com/ncw/swift"
 	"io"
 	"os"
@@ -888,6 +887,16 @@ func TestCDNEnable(t *testing.T) {
 	}
 	if _, ok := headers["X-Cdn-Uri"]; !ok {
 		t.Error("Failed to enable CDN for container")
+	}
+}
+
+func TestCDNMeta(t *testing.T) {
+	headers, err := c.ContainerCDNMeta(CONTAINER)
+	if err != nil {
+		t.Error(err)
+	}
+	if _, ok := headers["X-Cdn-Uri"]; !ok {
+		t.Error("CDN is not enabled")
 	}
 }
 

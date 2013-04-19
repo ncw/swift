@@ -6,7 +6,6 @@ package swift_test
 import (
 	"fmt"
 	"github.com/ncw/swift"
-	//"github.com/boj/swift"
 )
 
 func Example() {
