@@ -880,33 +880,6 @@ func TestObjectDifficultName(t *testing.T) {
 	}
 }
 
-func TestCDNEnable(t *testing.T) {
-	headers, err := c.ContainerCDNEnable(CONTAINER, 0)
-	if err != nil {
-		t.Error(err)
-	}
-	if _, ok := headers["X-Cdn-Uri"]; !ok {
-		t.Error("Failed to enable CDN for container")
-	}
-}
-
-func TestCDNMeta(t *testing.T) {
-	headers, err := c.ContainerCDNMeta(CONTAINER)
-	if err != nil {
-		t.Error(err)
-	}
-	if _, ok := headers["X-Cdn-Uri"]; !ok {
-		t.Error("CDN is not enabled")
-	}
-}
-
-func TestCDNDisable(t *testing.T) {
-	err := c.ContainerCDNDisable(CONTAINER) // files stick in CDN until TTL expires
-	if err != nil {
-		t.Error(err)
-	}
-}
-
 func TestContainerDelete(t *testing.T) {
 	err := c.ContainerDelete(CONTAINER)
 	if err != nil {
