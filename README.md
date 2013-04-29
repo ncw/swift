@@ -42,6 +42,11 @@ Here is a short example from the docs
     containers, err := c.ListContainers(nil)
     fmt.Println(containers)
     // etc...
+    
+Additions
+---------
+
+The `rs` sub project contains a wrapper for the Rackspace specific CDN Management interface.
 
 Testing
 -------
@@ -80,4 +85,4 @@ Authors
 Contributors
 ------------
 
-- Your name goes here!
+- Brian "bojo" Jones <mojobojo@gmail.com>
