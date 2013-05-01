@@ -32,7 +32,7 @@ const (
 //
 // You need to provide UserName, ApiKey and AuthUrl when you create a
 // connection then call Authenticate on it.
-// 
+//
 // For reference some common AuthUrls looks like this:
 //
 //  Rackspace US        https://auth.api.rackspacecloud.com/v1.0
@@ -934,7 +934,7 @@ func objectPutHeaders(objectName string, checkHash *bool, Hash string, contentTy
 // file as it is being uploaded and check it against that returned
 // from the server.  If it is wrong then it will return
 // ObjectCorrupted on Close()
-// 
+//
 // If you know the MD5 hash of the object ahead of time then set the
 // Hash parameter and it will be sent to the server (as an Etag
 // header) and the server will check the MD5 itself after the upload,
@@ -942,7 +942,7 @@ func objectPutHeaders(objectName string, checkHash *bool, Hash string, contentTy
 //
 // If you don't want any error protection (not recommended) then set
 // checkHash to false and Hash to "".
-// 
+//
 // If contentType is set it will be used, otherwise one will be
 // guessed from objectName using mime.TypeByExtension
 func (c *Connection) ObjectCreate(container string, objectName string, checkHash bool, Hash string, contentType string, h Headers) (file *ObjectCreateFile, err error) {
@@ -977,12 +977,12 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 // its contents read.
 //
 // This is a low level interface.
-// 
+//
 // If checkHash is True then it will calculate the MD5 Hash of the
 // file as it is being uploaded and check it against that returned
 // from the server.  If it is wrong then it will return
 // ObjectCorrupted.
-// 
+//
 // If you know the MD5 hash of the object ahead of time then set the
 // Hash parameter and it will be sent to the server (as an Etag
 // header) and the server will check the MD5 itself after the upload,
@@ -990,7 +990,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 //
 // If you don't want any error protection (not recommended) then set
 // checkHash to false and Hash to "".
-// 
+//
 // If contentType is set it will be used, otherwise one will be
 // guessed from objectName using mime.TypeByExtension
 func (c *Connection) ObjectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers) (headers Headers, err error) {
@@ -1166,9 +1166,9 @@ var _ io.Seeker = &ObjectOpenFile{}
 // interfaces.
 //
 // You must call Close() on contents when finished
-// 
+//
 // Returns the headers of the response.
-// 
+//
 // If checkHash is true then it will calculate the md5sum of the file
 // as it is being received and check it against that returned from the
 // server.  If it is wrong then it will return ObjectCorrupted. It
@@ -1208,9 +1208,9 @@ func (c *Connection) ObjectOpen(container string, objectName string, checkHash b
 }
 
 // ObjectGet gets the object into the io.Writer contents.
-// 
+//
 // Returns the headers of the response.
-// 
+//
 // If checkHash is true then it will calculate the md5sum of the file
 // as it is being received and check it against that returned from the
 // server.  If it is wrong then it will return ObjectCorrupted.
