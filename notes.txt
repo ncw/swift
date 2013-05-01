@@ -1,6 +1,11 @@
 Notes on Go Swift
 =================
 
+Make a builder style interface like the Google Go APIs?  Advantages
+are that it is easy to add named methods to the service object to do
+specific things.  Slightly less efficient.  Not sure about how to
+return extra stuff though - in an object?
+
 Use httptest to make unit test rather than an integration test
 
 Make a container struct so these could be methods on it?
