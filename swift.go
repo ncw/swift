@@ -1,5 +1,3 @@
-// This package provides an easy to use interface to Swift / Openstack
-// Object Storage / Rackspace cloud files from the Go Language
 package swift
 
 import (
@@ -1429,7 +1427,7 @@ func (c *Connection) VersionDisable(current string) error {
 
 // VersionObjectList returns a list of older versions of the object.
 //
-/// Objects are returned in the format <length><object_name>/<timestamp>
+// Objects are returned in the format <length><object_name>/<timestamp>
 func (c *Connection) VersionObjectList(version, object string) ([]string, error) {
 	opts := &ObjectsOpts{
 		// <3-character zero-padded hexadecimal character length><object name>/
