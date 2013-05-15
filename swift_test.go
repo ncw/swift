@@ -28,12 +28,15 @@ var (
 )
 
 const (
-	CONTAINER    = "GoSwiftUnitTest"
-	OBJECT       = "test_object"
-	OBJECT2      = "test_object2"
-	CONTENTS     = "12345"
-	CONTENT_SIZE = int64(len(CONTENTS))
-	CONTENT_MD5  = "827ccb0eea8a706c4c34a16891f84e7b"
+	CONTAINER          = "GoSwiftUnitTest"
+	VERSIONS_CONTAINER = "GoSwiftUnitTestVersions"
+	CURRENT_CONTAINER  = "GoSwiftUnitTestCurrent"
+	OBJECT             = "test_object"
+	OBJECT2            = "test_object2"
+	CONTENTS           = "12345"
+	CONTENTS2          = "54321"
+	CONTENT_SIZE       = int64(len(CONTENTS))
+	CONTENT_MD5        = "827ccb0eea8a706c4c34a16891f84e7b"
 )
 
 // Test functions are run in order - this one must be first!
@@ -841,6 +844,85 @@ func TestObjectUpdateContentType(t *testing.T) {
 		t.Error("Didn't change content type")
 	}
 	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "", "potato-salad": ""})
+}
+
+func TestVersionContainerCreate(t *testing.T) {
+	if err := c.VersionContainerCreate(CURRENT_CONTAINER, VERSIONS_CONTAINER); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVersionObjectAdd(t *testing.T) {
+	// Version 1
+	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS, ""); err != nil {
+		t.Fatal(err)
+	}
+	if contents, err := c.ObjectGetString(CURRENT_CONTAINER, OBJECT); err != nil {
+		t.Fatal(err)
+	} else if contents != CONTENTS {
+		t.Error("Contents wrong")
+	}
+
+	// Version 2
+	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
+		t.Fatal(err)
+	}
+	if contents, err := c.ObjectGetString(CURRENT_CONTAINER, OBJECT); err != nil {
+		t.Fatal(err)
+	} else if contents != CONTENTS2 {
+		t.Error("Contents wrong")
+	}
+
+	// Version 3
+	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVersionObjectList(t *testing.T) {
+	list, err := c.VersionObjectList(VERSIONS_CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(list) != 2 {
+		t.Error("Version list should return 2 objects")
+	}
+
+	//fmt.Print(list)
+}
+
+func TestVersionObjectDelete(t *testing.T) {
+	// Delete Version 3
+	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete Version 2
+	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
+		t.Fatal(err)
+	}
+
+	// Contents should be reverted to Version 1
+	if contents, err := c.ObjectGetString(CURRENT_CONTAINER, OBJECT); err != nil {
+		t.Fatal(err)
+	} else if contents != CONTENTS {
+		t.Error("Contents wrong")
+	}
+}
+
+func TestVersionDeleteContent(t *testing.T) {
+	// Delete Version 1
+	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
+		t.Fatal(err)
+	}
+	// Clean up containers
+	if err := c.ContainerDelete(VERSIONS_CONTAINER); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ContainerDelete(CURRENT_CONTAINER); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestObjectDelete(t *testing.T) {

@@ -29,9 +29,9 @@ Here is a short example from the docs
 
     // Create a connection
     c = swift.Connection{
-	UserName: "user",
-	ApiKey:   "key",
-	AuthUrl:  "auth_url",
+        UserName: "user",
+	      ApiKey:   "key",
+	      AuthUrl:  "auth_url",
     }
     // Authenticate
     err := c.Authenticate()
@@ -56,9 +56,9 @@ Rackspace Cloud files account.
 
 Set these environment variables before running the tests
 
-  export SWIFT_API_USER='user'
-  export SWIFT_API_KEY='key'
-  export SWIFT_AUTH_URL='https://url.of.auth.server/v1.0'
+    export SWIFT_API_USER='user'
+    export SWIFT_API_KEY='key'
+    export SWIFT_AUTH_URL='https://url.of.auth.server/v1.0'
 
 Then run the tests with `go test`
 

@@ -39,3 +39,31 @@ func ExampleConnection_ObjectsWalk() {
 	})
 	fmt.Println("Found all the objects", objects, err)
 }
+
+func ExampleConnection_VersionContainerCreate() {
+	// Use the helper method to create the current and versions container.
+	if err := c.VersionContainerCreate("cds", "cd-versions"); err != nil {
+		fmt.Print(err.Error())
+	}
+}
+
+func ExampleConnection_VersionEnable() {
+	// Build the containers manually and enable them.
+	if err := c.ContainerCreate("movie-versions", nil); err != nil {
+		fmt.Print(err.Error())
+	}
+	if err := c.ContainerCreate("movies", nil); err != nil {
+		fmt.Print(err.Error())
+	}
+	if err := c.VersionEnable("movies", "movie-versions"); err != nil {
+		fmt.Print(err.Error())
+	}
+
+	// Access the primary container as usual with ObjectCreate(), ObjectPut(), etc.
+	// etc...
+}
+
+func ExampleConnection_VersionDisable() {
+	// Disable versioning on a container.  Note that this does not delete the versioning container.
+	c.VersionDisable("movies")
+}
