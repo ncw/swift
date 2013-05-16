@@ -8,13 +8,12 @@
 // next function tests.  This means that if it goes wrong it is likely
 // errors will propagate.  You may need to tidy up the CONTAINER to
 // get it to run cleanly.
-package swift_test
+package swift
 
 import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
-	"github.com/ncw/swift"
 	"io"
 	"os"
 	"testing"
@@ -22,9 +21,9 @@ import (
 )
 
 var (
-	c  swift.Connection
-	m1 = swift.Metadata{"Hello": "1", "potato-Salad": "2"}
-	m2 = swift.Metadata{"hello": "", "potato-salad": ""}
+	c  Connection
+	m1 = Metadata{"Hello": "1", "potato-Salad": "2"}
+	m2 = Metadata{"hello": "", "potato-salad": ""}
 )
 
 const (
@@ -47,7 +46,7 @@ func TestAuthenticate(t *testing.T) {
 	if UserName == "" || ApiKey == "" || AuthUrl == "" {
 		t.Fatal("SWIFT_API_USER, SWIFT_API_KEY and SWIFT_AUTH_URL not all set")
 	}
-	c = swift.Connection{
+	c = Connection{
 		UserName: UserName,
 		ApiKey:   ApiKey,
 		AuthUrl:  AuthUrl,
@@ -171,7 +170,7 @@ func TestContainersAll(t *testing.T) {
 }
 
 func TestContainersAllWithLimit(t *testing.T) {
-	containers1, err := c.ContainersAll(&swift.ContainersOpts{Limit: 1})
+	containers1, err := c.ContainersAll(&ContainersOpts{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +240,7 @@ func TestContainerNamesAll(t *testing.T) {
 }
 
 func TestContainerNamesAllWithLimit(t *testing.T) {
-	containers1, err := c.ContainerNamesAll(&swift.ContainersOpts{Limit: 1})
+	containers1, err := c.ContainerNamesAll(&ContainersOpts{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +374,7 @@ func TestObjectCreate(t *testing.T) {
 	// FIXME: work around bug which produces 503 not 422 for empty corrupted files
 	fmt.Fprintf(out, "Sausage")
 	err = out.Close()
-	if err != swift.ObjectCorrupted {
+	if err != ObjectCorrupted {
 		t.Error("Expecting object corrupted not", err)
 	}
 
@@ -602,7 +601,7 @@ func TestObjectNamesAll(t *testing.T) {
 }
 
 func TestObjectNamesAllWithLimit(t *testing.T) {
-	objects, err := c.ObjectNamesAll(CONTAINER, &swift.ObjectsOpts{Limit: 1})
+	objects, err := c.ObjectNamesAll(CONTAINER, &ObjectsOpts{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +613,7 @@ func TestObjectNamesAllWithLimit(t *testing.T) {
 
 func TestObjectsWalk(t *testing.T) {
 	objects := make([]string, 0)
-	err := c.ObjectsWalk(container, nil, func(opts *swift.ObjectsOpts) (interface{}, error) {
+	err := c.ObjectsWalk(container, nil, func(opts *ObjectsOpts) (interface{}, error) {
 		newObjects, err := c.ObjectNames(CONTAINER, opts)
 		if err == nil {
 			objects = append(objects, newObjects...)
@@ -631,7 +630,7 @@ func TestObjectsWalk(t *testing.T) {
 }
 
 func TestObjects(t *testing.T) {
-	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
+	objects, err := c.Objects(CONTAINER, &ObjectsOpts{Delimiter: '/'})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +654,7 @@ func TestObjectsDirectory(t *testing.T) {
 
 	// Look for the directory object and check we aren't confusing
 	// it with a pseudo directory object
-	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
+	objects, err := c.Objects(CONTAINER, &ObjectsOpts{Delimiter: '/'})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -687,7 +686,7 @@ func TestObjectsPseudoDirectory(t *testing.T) {
 	defer c.ObjectDelete(CONTAINER, "directory/puppy.jpg")
 
 	// Look for the pseudo directory
-	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
+	objects, err := c.Objects(CONTAINER, &ObjectsOpts{Delimiter: '/'})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,7 +708,7 @@ func TestObjectsPseudoDirectory(t *testing.T) {
 	}
 
 	// Look in the pseudo directory now
-	objects, err = c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: "directory/"})
+	objects, err = c.Objects(CONTAINER, &ObjectsOpts{Delimiter: '/', Path: "directory/"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -736,7 +735,7 @@ func TestObjectsAll(t *testing.T) {
 }
 
 func TestObjectsAllWithLimit(t *testing.T) {
-	objects, err := c.ObjectsAll(CONTAINER, &swift.ObjectsOpts{Limit: 1})
+	objects, err := c.ObjectsAll(CONTAINER, &ObjectsOpts{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -747,7 +746,7 @@ func TestObjectsAllWithLimit(t *testing.T) {
 }
 
 func TestObjectNamesWithPath(t *testing.T) {
-	objects, err := c.ObjectNames(CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: ""})
+	objects, err := c.ObjectNames(CONTAINER, &ObjectsOpts{Delimiter: '/', Path: ""})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,7 +754,7 @@ func TestObjectNamesWithPath(t *testing.T) {
 		t.Error("Bad listing with path", objects)
 	}
 	// fmt.Println(objects)
-	objects, err = c.ObjectNames(CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: "Downloads/"})
+	objects, err = c.ObjectNames(CONTAINER, &ObjectsOpts{Delimiter: '/', Path: "Downloads/"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -777,7 +776,7 @@ func TestObjectCopy(t *testing.T) {
 }
 
 func TestObjectCopyWithMetadata(t *testing.T) {
-	m := swift.Metadata{}
+	m := Metadata{}
 	m["copy-special-metadata"] = "hello"
 	m["hello"] = "3"
 	h := m.ObjectHeaders()
@@ -807,7 +806,7 @@ func TestObjectMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, err = c.Object(CONTAINER, OBJECT)
-	if err != swift.ObjectNotFound {
+	if err != ObjectNotFound {
 		t.Fatal("Expecting object not found not", err)
 	}
 	_, _, err = c.Object(CONTAINER, OBJECT2)
@@ -820,7 +819,7 @@ func TestObjectMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, err = c.Object(CONTAINER, OBJECT2)
-	if err != swift.ObjectNotFound {
+	if err != ObjectNotFound {
 		t.Fatal("Expecting object not found not", err)
 	}
 	_, headers, err := c.Object(CONTAINER, OBJECT)
@@ -931,7 +930,7 @@ func TestObjectDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = c.ObjectDelete(CONTAINER, OBJECT)
-	if err != swift.ObjectNotFound {
+	if err != ObjectNotFound {
 		t.Fatal("Expecting Object not found", err)
 	}
 }
@@ -968,11 +967,11 @@ func TestContainerDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = c.ContainerDelete(CONTAINER)
-	if err != swift.ContainerNotFound {
+	if err != ContainerNotFound {
 		t.Fatal("Expecting container not found", err)
 	}
 	_, _, err = c.Container(CONTAINER)
-	if err != swift.ContainerNotFound {
+	if err != ContainerNotFound {
 		t.Fatal("Expecting container not found", err)
 	}
 }

@@ -1,5 +1,5 @@
 // See swift_test.go for requirements to run this test.
-package rs_test
+package rs
 
 import (
 	"github.com/ncw/swift/rs"
