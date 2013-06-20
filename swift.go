@@ -10,7 +10,6 @@ import (
 	"io"
 	"log"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -45,7 +44,7 @@ type Connection struct {
 	Retries        int           // Retries on error (default is 3)
 	UserAgent      string        // Http User agent (default goswift/1.0)
 	ConnectTimeout time.Duration // Connect channel timeout (default 10s)
-	Timeout        time.Duration // Data channel timeout (default 60s) NOT IMPLEMENTED
+	Timeout        time.Duration // Data channel timeout (default 60s)
 	storageUrl     string
 	authToken      string
 	tr             *http.Transport
@@ -88,6 +87,7 @@ var (
 	ContainerNotEmpty   = newError(409, "Container Not Empty")
 	ObjectNotFound      = newError(404, "Object Not Found")
 	ObjectCorrupted     = newError(422, "Object Corrupted")
+	TimeoutError        = newError(408, "Timeout when reading or writing data")
 
 	// Mappings for authentication errors
 	authErrorMap = errorMap{
@@ -148,6 +148,26 @@ func readHeaders(resp *http.Response) Headers {
 // Headers stores HTTP headers (can only have one of each header like Swift).
 type Headers map[string]string
 
+// Does an http request using the running timer passed in
+func (c *Connection) doTimeoutRequest(timer *time.Timer, req *http.Request) (resp *http.Response, err error) {
+	// Do the request in the background so we can check the timeout
+	done := make(chan bool, 1)
+	go func() {
+		resp, err = c.client.Do(req)
+		done <- true
+	}()
+	// Wait for the read or the timeout
+	select {
+	case <-done:
+		return
+	case <-timer.C:
+		// Kill the connection on timeout so we don't leak sockets or goroutines
+		cancelRequest(c.tr, req)
+		return nil, TimeoutError
+	}
+	return // For Go 1.0
+}
+
 // Authenticate connects to the Swift server.
 func (c *Connection) Authenticate() (err error) {
 	// Set defaults if not set
@@ -165,23 +185,8 @@ func (c *Connection) Authenticate() (err error) {
 	}
 	if c.tr == nil {
 		c.tr = &http.Transport{
-			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
-			//		DisableCompression: true,
-
-			// Dial with deadline
-			//
-			// FIXME not sure how this plays with connection pooling
-			Dial: func(network, addr string) (net.Conn, error) {
-				conn, err := net.DialTimeout(network, addr, c.ConnectTimeout)
-				if err != nil {
-					return nil, err
-				}
-				// FIXME Need to continuously bump this
-				// deadline forwards but can't figure
-				// out how to get the net.Conn out of the Request
-				// conn.SetDeadline(time.Now().Add(c.Timeout))
-				return conn, nil
-			},
+		//		TLSClientConfig:    &tls.Config{RootCAs: pool},
+		//		DisableCompression: true,
 		}
 	}
 	if c.client == nil {
@@ -193,16 +198,15 @@ func (c *Connection) Authenticate() (err error) {
 	// Flush the keepalives connection - if we are
 	// re-authenticating then stuff has gone wrong
 	c.tr.CloseIdleConnections()
-	var req *http.Request
-	req, err = http.NewRequest("GET", c.AuthUrl, nil)
+	req, err := http.NewRequest("GET", c.AuthUrl, nil)
 	if err != nil {
 		return
 	}
 	req.Header.Set("User-Agent", c.UserAgent)
 	req.Header.Set("X-Auth-Key", c.ApiKey)
 	req.Header.Set("X-Auth-User", c.UserName)
-	var resp *http.Response
-	resp, err = c.client.Do(req)
+	timer := time.NewTimer(c.ConnectTimeout)
+	resp, err := c.doTimeoutRequest(timer, req)
 	if err != nil {
 		return
 	}
@@ -251,12 +255,12 @@ type RequestOpts struct {
 	Retries    int
 }
 
-// storage runs a remote command on a the storage url, returns a
+// Call runs a remote command on the targetUrl, returns a
 // response, headers and possible error.
 //
 // operation is GET, HEAD etc
 // container is the name of a container
-// Any other parameters (if not None) are added to the storage url
+// Any other parameters (if not None) are added to the targetUrl
 //
 // Returns a response or an error.  If response is returned then
 // resp.Body.Close() must be called on it, unless noResponse is set in
@@ -264,17 +268,14 @@ type RequestOpts struct {
 //
 // This will Authenticate if necessary, and re-authenticate if it
 // receives a 401 error which means the token has expired
-func (c *Connection) storage(p RequestOpts) (resp *http.Response, headers Headers, err error) {
-	return c.Call(c.storageUrl, p)
-}
-
-// Call is an wrapper which calls the correct endpoint targetUrl.
+//
 // This method is exported so extensions can call it.
 func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response, headers Headers, err error) {
 	retries := p.Retries
 	if retries == 0 {
 		retries = c.Retries
 	}
+	var req *http.Request
 	for {
 		if !c.Authenticated() {
 			err = c.Authenticate()
@@ -296,7 +297,6 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		if p.Parameters != nil {
 			url.RawQuery = p.Parameters.Encode()
 		}
-		var req *http.Request
 		req, err = http.NewRequest(p.Operation, url.String(), p.Body)
 		if err != nil {
 			return
@@ -308,7 +308,12 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		}
 		req.Header.Add("User-Agent", DefaultUserAgent)
 		req.Header.Add("X-Auth-Token", c.authToken)
-		resp, err = c.client.Do(req)
+		timer := time.NewTimer(c.ConnectTimeout)
+		reader := p.Body
+		if reader != nil {
+			reader = newWatchdogReader(reader, c.Timeout, timer)
+		}
+		resp, err = c.doTimeoutRequest(timer, req)
 		if err != nil {
 			return
 		}
@@ -332,8 +337,32 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		if err != nil {
 			return nil, nil, err
 		}
+	} else {
+		// Cancel the request on timeout
+		cancel := func() {
+			cancelRequest(c.tr, req)
+		}
+		// Wrap resp.Body to make it obey an idle timeout
+		resp.Body = newTimeoutReader(resp.Body, c.Timeout, cancel)
 	}
 	return
+}
+
+// storage runs a remote command on a the storage url, returns a
+// response, headers and possible error.
+//
+// operation is GET, HEAD etc
+// container is the name of a container
+// Any other parameters (if not None) are added to the storage url
+//
+// Returns a response or an error.  If response is returned then
+// resp.Body.Close() must be called on it, unless noResponse is set in
+// which case the body will be closed in this function
+//
+// This will Authenticate if necessary, and re-authenticate if it
+// receives a 401 error which means the token has expired
+func (c *Connection) storage(p RequestOpts) (resp *http.Response, headers Headers, err error) {
+	return c.Call(c.storageUrl, p)
 }
 
 // readLines reads the response into an array of strings.
