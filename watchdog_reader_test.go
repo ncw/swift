@@ -10,42 +10,47 @@ import (
 
 // Uses testReader from timeout_reader_test.go
 
-func TestWatchdogReaderNoTimeout(t *testing.T) {
+func testWatchdogReaderTimeout(t *testing.T, initialTimeout, watchdogTimeout time.Duration, expectedTimeout bool) {
 	test := newTestReader(3, 10*time.Millisecond)
-	timer := time.NewTimer(100 * time.Millisecond)
+	timer := time.NewTimer(initialTimeout)
 	fired := false
+	started := make(chan bool)
 	go func() {
+		started <- true
 		select {
 		case <-timer.C:
 			fired = true
 		}
 	}()
-	wr := newWatchdogReader(test, 100*time.Millisecond, timer)
+	<-started
+	wr := newWatchdogReader(test, watchdogTimeout, timer)
 	b, err := ioutil.ReadAll(wr)
 	if err != nil || string(b) != "AAA" {
 		t.Fatalf("Bad read %s %s", err, b)
 	}
-	if fired {
-		t.Fatal("Timer should not have fired")
+	if expectedTimeout {
+		if !fired {
+			t.Fatal("Timer should have fired")
+		}
+	} else {
+		if fired {
+			t.Fatal("Timer should not have fired")
+		}
 	}
 }
 
+func TestWatchdogReaderNoTimeout(t *testing.T) {
+	testWatchdogReaderTimeout(t, 100*time.Millisecond, 100*time.Millisecond, false)
+}
+
 func TestWatchdogReaderTimeout(t *testing.T) {
-	test := newTestReader(3, 10*time.Millisecond)
-	timer := time.NewTimer(5 * time.Millisecond)
-	fired := false
-	go func() {
-		select {
-		case <-timer.C:
-			fired = true
-		}
-	}()
-	wr := newWatchdogReader(test, 5*time.Millisecond, timer)
-	b, err := ioutil.ReadAll(wr)
-	if err != nil || string(b) != "AAA" {
-		t.Fatalf("Bad read %s %s", err, b)
-	}
-	if !fired {
-		t.Fatal("Timer should have fired")
-	}
+	testWatchdogReaderTimeout(t, 5*time.Millisecond, 5*time.Millisecond, true)
+}
+
+func TestWatchdogReaderNoTimeoutShortInitial(t *testing.T) {
+	testWatchdogReaderTimeout(t, 5*time.Millisecond, 100*time.Millisecond, false)
+}
+
+func TestWatchdogReaderTimeoutLongInitial(t *testing.T) {
+	testWatchdogReaderTimeout(t, 100*time.Millisecond, 5*time.Millisecond, true)
 }
