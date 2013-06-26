@@ -28,10 +28,10 @@ Here is a short example from the docs
     import "github.com/ncw/swift"
 
     // Create a connection
-    c = swift.Connection{
+    c := swift.Connection{
         UserName: "user",
-	      ApiKey:   "key",
-	      AuthUrl:  "auth_url",
+        ApiKey:   "key",
+        AuthUrl:  "auth_url",
     }
     // Authenticate
     err := c.Authenticate()
@@ -39,7 +39,7 @@ Here is a short example from the docs
         panic(err)
     }
     // List all the containers
-    containers, err := c.ListContainers(nil)
+    containers, err := c.ContainerNames(nil)
     fmt.Println(containers)
     // etc...
     
