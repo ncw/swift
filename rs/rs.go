@@ -11,15 +11,18 @@ import (
 // exposes the RackSpace CDN commands via the CDN Management URL interface.
 type RsConnection struct {
 	swift.Connection
+	cdnUrl string
 }
 
 // manage is similar to the swift storage method, but uses the CDN Management URL for CDN specific calls.
 func (c *RsConnection) manage(p swift.RequestOpts) (resp *http.Response, headers swift.Headers, err error) {
-	url := c.AuthHeaders.Get("X-CDN-Management-Url")
-	if url == "" {
+	if c.cdnUrl == "" {
+		c.cdnUrl = c.Auth.CdnUrl()
+	}
+	if c.cdnUrl == "" {
 		return nil, nil, errors.New("The X-CDN-Management-Url does not exist on the authenticated platform")
 	}
-	return c.Connection.Call(url, p)
+	return c.Connection.Call(c.cdnUrl, p)
 }
 
 // ContainerCDNEnable enables a container for public CDN usage.
