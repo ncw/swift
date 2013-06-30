@@ -25,23 +25,27 @@ func newTimeoutReader(reader io.ReadCloser, timeout time.Duration, cancel func()
 // Read reads up to len(p) bytes into p
 //
 // Waits at most for timeout for the read to complete otherwise returns a timeout
-func (t *timeoutReader) Read(p []byte) (n int, err error) {
+func (t *timeoutReader) Read(p []byte) (int, error) {
 	// FIXME limit the amount of data read in one chunk so as to not exceed the timeout?
 	// Do the read in the background
-	done := make(chan bool, 1)
+	type result struct {
+		n   int
+		err error
+	}
+	done := make(chan result, 1)
 	go func() {
-		n, err = t.reader.Read(p)
-		done <- true
+		n, err := t.reader.Read(p)
+		done <- result{n, err}
 	}()
 	// Wait for the read or the timeout
 	select {
-	case <-done:
-		return
+	case r := <-done:
+		return r.n, r.err
 	case <-time.After(t.timeout):
 		t.cancel()
 		return 0, TimeoutError
 	}
-	return // for Go 1.0
+	panic("unreachable") // for Go 1.0
 }
 
 // Close the channel
