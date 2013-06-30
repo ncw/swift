@@ -301,7 +301,12 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		if p.Parameters != nil {
 			url.RawQuery = p.Parameters.Encode()
 		}
-		req, err = http.NewRequest(p.Operation, url.String(), p.Body)
+		timer := time.NewTimer(c.ConnectTimeout)
+		reader := p.Body
+		if reader != nil {
+			reader = newWatchdogReader(reader, c.Timeout, timer)
+		}
+		req, err = http.NewRequest(p.Operation, url.String(), reader)
 		if err != nil {
 			return
 		}
@@ -312,11 +317,6 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		}
 		req.Header.Add("User-Agent", DefaultUserAgent)
 		req.Header.Add("X-Auth-Token", c.authToken)
-		timer := time.NewTimer(c.ConnectTimeout)
-		reader := p.Body
-		if reader != nil {
-			reader = newWatchdogReader(reader, c.Timeout, timer)
-		}
 		resp, err = c.doTimeoutRequest(timer, req)
 		if err != nil {
 			return
