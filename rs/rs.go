@@ -5,12 +5,24 @@ import (
 	"github.com/ncw/swift"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // RsConnection is a RackSpace specific wrapper to the core swift library which
 // exposes the RackSpace CDN commands via the CDN Management URL interface.
+// It can also take advantage of the faster internal "ServiceNet" network.
 type RsConnection struct {
 	swift.Connection
+}
+
+func (c *RsConnection) Authenticate() error {
+	err := c.Connection.Authenticate()
+	if err != nil {
+		return err
+	}
+
+	c.StorageUrl = strings.Replace(c.StorageUrl, "https://", "https://snet-", 1)
+	return nil
 }
 
 // manage is similar to the swift storage method, but uses the CDN Management URL for CDN specific calls.
