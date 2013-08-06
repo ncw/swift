@@ -46,8 +46,8 @@ type Connection struct {
 	UserAgent      string        // Http User agent (default goswift/1.0)
 	ConnectTimeout time.Duration // Connect channel timeout (default 10s)
 	Timeout        time.Duration // Data channel timeout (default 60s) NOT IMPLEMENTED
-	storageUrl     string
-	authToken      string
+	StorageUrl     string
+	AuthToken      string
 	tr             *http.Transport
 	client         *http.Client
 	AuthHeaders    http.Header // store the authentication headers so extensions can access them
@@ -215,8 +215,8 @@ func (c *Connection) Authenticate() (err error) {
 	if err = c.parseHeaders(resp, authErrorMap); err != nil {
 		return
 	}
-	c.storageUrl = resp.Header.Get("X-Storage-Url")
-	c.authToken = resp.Header.Get("X-Auth-Token")
+	c.StorageUrl = resp.Header.Get("X-Storage-Url")
+	c.AuthToken = resp.Header.Get("X-Auth-Token")
 	c.AuthHeaders = resp.Header // save authentication headers for external extension access
 	if !c.Authenticated() {
 		return newError(0, "Response didn't have storage url and auth token")
@@ -226,8 +226,8 @@ func (c *Connection) Authenticate() (err error) {
 
 // UnAuthenticate removes the authentication from the Connection.
 func (c *Connection) UnAuthenticate() {
-	c.storageUrl = ""
-	c.authToken = ""
+	c.StorageUrl = ""
+	c.AuthToken = ""
 }
 
 // Authenticated returns a boolean to show if the current connection
@@ -235,7 +235,7 @@ func (c *Connection) UnAuthenticate() {
 //
 // Doesn't actually check the credentials against the server.
 func (c *Connection) Authenticated() bool {
-	return c.storageUrl != "" && c.authToken != ""
+	return c.StorageUrl != "" && c.AuthToken != ""
 }
 
 // RequestOpts contains parameters for Connection.storage.
@@ -265,7 +265,7 @@ type RequestOpts struct {
 // This will Authenticate if necessary, and re-authenticate if it
 // receives a 401 error which means the token has expired
 func (c *Connection) storage(p RequestOpts) (resp *http.Response, headers Headers, err error) {
-	return c.Call(c.storageUrl, p)
+	return c.Call(c.StorageUrl, p)
 }
 
 // Call is an wrapper which calls the correct endpoint targetUrl.
@@ -307,7 +307,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 			}
 		}
 		req.Header.Add("User-Agent", DefaultUserAgent)
-		req.Header.Add("X-Auth-Token", c.authToken)
+		req.Header.Add("X-Auth-Token", c.AuthToken)
 		resp, err = c.client.Do(req)
 		if err != nil {
 			return
