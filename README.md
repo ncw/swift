@@ -60,6 +60,11 @@ Set these environment variables before running the tests
     export SWIFT_API_KEY='key'
     export SWIFT_AUTH_URL='https://url.of.auth.server/v1.0'
 
+And optionally these if using v2 authentication
+
+    export SWIFT_TENANT='TenantName'
+    export SWIFT_TENANT_ID='TenantId'
+
 Then run the tests with `go test`
 
 License

@@ -111,11 +111,18 @@ func (auth *v2Auth) request(c *Connection) (*http.Request, error) {
 	v2.Auth.ApiKeyCredentials.ApiKey = c.ApiKey
 	v2.Auth.PasswordCredentials.UserName = c.UserName
 	v2.Auth.PasswordCredentials.Password = c.ApiKey
+	v2.Auth.Tenant = c.Tenant
+	v2.Auth.TenantId = c.TenantId
 	body, err := json.Marshal(v2)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", c.AuthUrl, bytes.NewBuffer(body))
+	url := c.AuthUrl
+	if !strings.HasSuffix(url, "/") {
+		url += "/"
+	}
+	url += "tokens"
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +181,7 @@ func (auth *v2Auth) CdnUrl() string {
 //
 // http://docs.openstack.org/developer/keystone/api_curl_examples.html
 // http://docs.rackspace.com/servers/api/v2/cs-gettingstarted/content/curl_auth.html
+// http://docs.openstack.org/api/openstack-identity-service/2.0/content/POST_authenticate_v2.0_tokens_.html
 type v2AuthRequest struct {
 	Auth struct {
 		ApiKeyCredentials struct {
@@ -184,6 +192,8 @@ type v2AuthRequest struct {
 			UserName string `json:"username"`
 			Password string `json:"password"`
 		} `json:"passwordCredentials"`
+		Tenant   string `json:"tenantName,omitempty"`
+		TenantId string `json:"tenantId,omitempty"`
 	} `json:"auth"`
 }
 
@@ -191,6 +201,7 @@ type v2AuthRequest struct {
 //
 // http://docs.openstack.org/developer/keystone/api_curl_examples.html
 // http://docs.rackspace.com/servers/api/v2/cs-gettingstarted/content/curl_auth.html
+// http://docs.openstack.org/api/openstack-identity-service/2.0/content/POST_authenticate_v2.0_tokens_.html
 type v2AuthResponse struct {
 	Access struct {
 		ServiceCatalog []struct {

@@ -51,6 +51,8 @@ func TestAuthenticate(t *testing.T) {
 		UserName: UserName,
 		ApiKey:   ApiKey,
 		AuthUrl:  AuthUrl,
+		Tenant:   os.Getenv("SWIFT_TENANT"),
+		TenantId: os.Getenv("SWIFT_TENANT_ID"),
 	}
 	err := c.Authenticate()
 	if err != nil {

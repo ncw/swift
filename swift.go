@@ -42,10 +42,12 @@ const (
 //
 //  Rackspace US        https://auth.api.rackspacecloud.com/v1.0
 //  Rackspace UK        https://lon.auth.api.rackspacecloud.com/v1.0
-//  Rackspace v2        https://identity.api.rackspacecloud.com/v2.0/tokens
+//  Rackspace v2        https://identity.api.rackspacecloud.com/v2.0
 //  Memset Memstore UK  https://auth.storage.memset.com/v1.0
+//  Memstore v2         https://auth.storage.memset.com/v2.0
 type Connection struct {
 	// Parameters - fill these in before calling Authenticate
+	// They are all optional except UserName, ApiKey and AuthUrl
 	UserName       string        // UserName for api
 	ApiKey         string        // Key for api access
 	AuthUrl        string        // Auth URL
@@ -53,9 +55,11 @@ type Connection struct {
 	UserAgent      string        // Http User agent (default goswift/1.0)
 	ConnectTimeout time.Duration // Connect channel timeout (default 10s)
 	Timeout        time.Duration // Data channel timeout (default 60s)
-	Region         string        //  Region to use eg "LON", "ORD" - default is use first region (V2 auth only)
+	Region         string        // Region to use eg "LON", "ORD" - default is use first region (V2 auth only)
 	AuthVersion    int           // Set to 1 or 2 or leave at 0 for autodetect
 	Internal       bool          // Set this to true to use the the internal / service network
+	Tenant         string        // Name of the tenant (v2 auth only)
+	TenantId       string        // Id of the tenant (v2 auth only)
 	// These are filled in after Authenticate is called as are the defaults for above
 	storageUrl string
 	authToken  string
