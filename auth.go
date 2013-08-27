@@ -218,8 +218,8 @@ type v2AuthResponse struct {
 			Expires string
 			Id      string
 			Tenant  struct {
-				id   string
-				name string
+				Id   string
+				Name string
 			}
 		}
 		User struct {
