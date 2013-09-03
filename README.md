@@ -91,3 +91,4 @@ Contributors
 ------------
 
 - Brian "bojo" Jones <mojobojo@gmail.com>
+- Janika Liiv <janika@toggl.com>
