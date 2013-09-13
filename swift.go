@@ -1313,6 +1313,26 @@ func (c *Connection) ObjectDelete(container string, objectName string) error {
 	return err
 }
 
+// parseResponseStatus parses string like "200 OK" and returns Error.
+//
+// For status codes beween 200 and 299, this returns nil.
+func parseResponseStatus(resp string) error {
+	code := 0
+	reason := resp
+	t := strings.SplitN(resp, " ", 2)
+	if len(t) == 2 {
+		ncode, err := strconv.Atoi(t[0])
+		if err == nil {
+			code = ncode
+			reason = t[1]
+		}
+	}
+	if 200 <= code && code <= 299 {
+		return nil
+	}
+	return newError(code, reason)
+}
+
 // BulkDeleteResult stores results of BulkDelete().
 type BulkDeleteResult struct {
 	NumberNotFound uint32           // # of objects not found.
@@ -1321,9 +1341,7 @@ type BulkDeleteResult struct {
 }
 
 // BulkDelete deletes objects.
-//
-// Valid result is returned only when err != nil.
-func (c *Connection) BulkDelete(container string, objectNames []string) (BulkDeleteResult, error) {
+func (c *Connection) BulkDelete(container string, objectNames []string) (result BulkDeleteResult, err error) {
 	var buffer bytes.Buffer
 	for _, s := range objectNames {
 		buffer.WriteString(fmt.Sprintf("/%s/%s\n", container,
@@ -1340,35 +1358,31 @@ func (c *Connection) BulkDelete(container string, objectNames []string) (BulkDel
 		Body: &buffer,
 	})
 	if err != nil {
-		return BulkDeleteResult{}, err
+		return
 	}
 	var jsonResult struct {
 		NotFound uint32 `json:"Number Not Found"`
+		Status   string `json:"Response Status"`
 		Errors   [][]string
 		Deleted  uint32 `json:"Number Deleted"`
 	}
 	err = readJson(resp, &jsonResult)
 	if err != nil {
-		return BulkDeleteResult{}, err
+		return
 	}
+
+	err = parseResponseStatus(jsonResult.Status)
+	result.NumberNotFound = jsonResult.NotFound
+	result.NumberDeleted = jsonResult.Deleted
 	el := make(map[string]error, len(jsonResult.Errors))
 	for _, t := range jsonResult.Errors {
 		if len(t) != 2 {
 			continue
 		}
-		code := 0
-		reason := t[1]
-		st := strings.SplitN(t[1], " ", 2)
-		if len(st) == 2 {
-			ncode, err := strconv.Atoi(st[0])
-			if err == nil {
-				code = ncode
-				reason = st[1]
-			}
-		}
-		el[t[0]] = newError(code, reason)
+		el[t[0]] = parseResponseStatus(t[1])
 	}
-	return BulkDeleteResult{jsonResult.NotFound, jsonResult.Deleted, el}, nil
+	result.Errors = el
+	return
 }
 
 // Object returns info about a single object including any metadata in the header.
