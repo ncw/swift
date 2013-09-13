@@ -1313,6 +1313,64 @@ func (c *Connection) ObjectDelete(container string, objectName string) error {
 	return err
 }
 
+// BulkDeleteResult stores results of BulkDelete().
+type BulkDeleteResult struct {
+	NumberNotFound uint32           // # of objects not found.
+	NumberDeleted  uint32           // # of deleted objects.
+	Errors         map[string]error // Mapping between object name and an error.
+}
+
+// BulkDelete deletes objects.
+//
+// Valid result is returned only when err != nil.
+func (c *Connection) BulkDelete(container string, objectNames []string) (BulkDeleteResult, error) {
+	var buffer bytes.Buffer
+	for _, s := range objectNames {
+		buffer.WriteString(fmt.Sprintf("/%s/%s\n", container,
+			url.QueryEscape(s)))
+	}
+	resp, _, err := c.storage(RequestOpts{
+		Container:  container,
+		Operation:  "DELETE",
+		Parameters: url.Values{"bulk-delete": []string{"1"}},
+		Headers: Headers{
+			"Accept":       "application/json",
+			"Content-Type": "text/plain",
+		},
+		Body: &buffer,
+	})
+	if err != nil {
+		return BulkDeleteResult{}, err
+	}
+	var jsonResult struct {
+		NotFound uint32 `json:"Number Not Found"`
+		Errors   [][]string
+		Deleted  uint32 `json:"Number Deleted"`
+	}
+	err = readJson(resp, &jsonResult)
+	if err != nil {
+		return BulkDeleteResult{}, err
+	}
+	el := make(map[string]error, len(jsonResult.Errors))
+	for _, t := range jsonResult.Errors {
+		if len(t) != 2 {
+			continue
+		}
+		code := 0
+		reason := t[1]
+		st := strings.SplitN(t[1], " ", 2)
+		if len(st) == 2 {
+			ncode, err := strconv.Atoi(st[0])
+			if err == nil {
+				code = ncode
+				reason = st[1]
+			}
+		}
+		el[t[0]] = newError(code, reason)
+	}
+	return BulkDeleteResult{jsonResult.NotFound, jsonResult.Deleted, el}, nil
+}
+
 // Object returns info about a single object including any metadata in the header.
 //
 // May return ObjectNotFound.
