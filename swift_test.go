@@ -940,6 +940,10 @@ func TestObjectDelete(t *testing.T) {
 
 func TestBulkDelete(t *testing.T) {
 	result, err := c.BulkDelete(CONTAINER, []string{OBJECT})
+	if err == swift.Forbidden {
+		t.Log("Server doesn't support BulkDelete - skipping test")
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

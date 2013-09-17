@@ -104,20 +104,24 @@ var (
 	ObjectNotFound      = newError(404, "Object Not Found")
 	ObjectCorrupted     = newError(422, "Object Corrupted")
 	TimeoutError        = newError(408, "Timeout when reading or writing data")
+	Forbidden           = newError(403, "Operation forbidden")
 
 	// Mappings for authentication errors
 	authErrorMap = errorMap{
 		401: AuthorizationFailed,
+		403: Forbidden,
 	}
 
 	// Mappings for container errors
 	ContainerErrorMap = errorMap{
+		403: Forbidden,
 		404: ContainerNotFound,
 		409: ContainerNotEmpty,
 	}
 
 	// Mappings for object errors
 	objectErrorMap = errorMap{
+		403: Forbidden,
 		404: ObjectNotFound,
 		422: ObjectCorrupted,
 	}
@@ -1348,28 +1352,28 @@ type BulkDeleteResult struct {
 	NumberNotFound int64            // # of objects not found.
 	NumberDeleted  int64            // # of deleted objects.
 	Errors         map[string]error // Mapping between object name and an error.
-	Headers        http.Header      // Response HTTP headers.
+	Headers        Headers          // Response HTTP headers.
 }
 
-// BulkDelete deletes objects in one go.
+// BulkDelete deletes multiple objectNames from container in one operation.
 //
 // Some servers may not accept bulk-delete requests since bulk-delete is
-// an optional feature of swift.
+// an optional feature of swift - these will return the Forbidden error.
 func (c *Connection) BulkDelete(container string, objectNames []string) (result BulkDeleteResult, err error) {
 	var buffer bytes.Buffer
 	for _, s := range objectNames {
 		buffer.WriteString(fmt.Sprintf("/%s/%s\n", container,
 			url.QueryEscape(s)))
 	}
-	resp, _, err := c.storage(RequestOpts{
-		Container:  container,
+	resp, headers, err := c.storage(RequestOpts{
 		Operation:  "DELETE",
 		Parameters: url.Values{"bulk-delete": []string{"1"}},
 		Headers: Headers{
 			"Accept":       "application/json",
 			"Content-Type": "text/plain",
 		},
-		Body: &buffer,
+		ErrorMap: ContainerErrorMap,
+		Body:     &buffer,
 	})
 	if err != nil {
 		return
@@ -1388,7 +1392,7 @@ func (c *Connection) BulkDelete(container string, objectNames []string) (result 
 	err = parseResponseStatus(jsonResult.Status, objectErrorMap)
 	result.NumberNotFound = jsonResult.NotFound
 	result.NumberDeleted = jsonResult.Deleted
-	result.Headers = resp.Header
+	result.Headers = headers
 	el := make(map[string]error, len(jsonResult.Errors))
 	for _, t := range jsonResult.Errors {
 		if len(t) != 2 {
