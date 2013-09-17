@@ -92,3 +92,4 @@ Contributors
 
 - Brian "bojo" Jones <mojobojo@gmail.com>
 - Janika Liiv <janika@toggl.com>
+- Yamamoto, Hirotaka <ymmt2005@gmail.com>
