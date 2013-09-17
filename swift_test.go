@@ -938,6 +938,34 @@ func TestObjectDelete(t *testing.T) {
 	}
 }
 
+func TestBulkDelete(t *testing.T) {
+	result, err := c.BulkDelete(CONTAINER, []string{OBJECT})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NumberNotFound != 1 {
+		t.Error("Expected 1, actual:", result.NumberNotFound)
+	}
+	if result.NumberDeleted != 0 {
+		t.Error("Expected 0, actual:", result.NumberDeleted)
+	}
+	err = c.ObjectPutString(CONTAINER, OBJECT, CONTENTS, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = c.BulkDelete(CONTAINER, []string{OBJECT2, OBJECT})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NumberNotFound != 1 {
+		t.Error("Expected 1, actual:", result.NumberNotFound)
+	}
+	if result.NumberDeleted != 1 {
+		t.Error("Expected 1, actual:", result.NumberDeleted)
+	}
+	t.Log("Errors:", result.Errors)
+}
+
 func TestObjectDifficultName(t *testing.T) {
 	const name = `hello? sausage/êé/Hello, 世界/ " ' @ < > & ?/`
 	err := c.ObjectPutString(CONTAINER, name, CONTENTS, "")

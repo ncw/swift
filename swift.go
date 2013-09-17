@@ -1313,6 +1313,93 @@ func (c *Connection) ObjectDelete(container string, objectName string) error {
 	return err
 }
 
+// parseResponseStatus parses string like "200 OK" and returns Error.
+//
+// For status codes beween 200 and 299, this returns nil.
+func parseResponseStatus(resp string, errorMap errorMap) error {
+	code := 0
+	reason := resp
+	t := strings.SplitN(resp, " ", 2)
+	if len(t) == 2 {
+		ncode, err := strconv.Atoi(t[0])
+		if err == nil {
+			code = ncode
+			reason = t[1]
+		}
+	}
+	if errorMap != nil {
+		if err, ok := errorMap[code]; ok {
+			return err
+		}
+	}
+	if 200 <= code && code <= 299 {
+		return nil
+	}
+	return newError(code, reason)
+}
+
+// BulkDeleteResult stores results of BulkDelete().
+//
+// Individual errors may (or may not) be returned by Errors.
+// Errors is a map whose keys are a full path of where the object was
+// to be deleted, and whose values are Error objects.  A full path of
+// object looks like "/API_VERSION/USER_ACCOUNT/CONTAINER/OBJECT_PATH".
+type BulkDeleteResult struct {
+	NumberNotFound int64            // # of objects not found.
+	NumberDeleted  int64            // # of deleted objects.
+	Errors         map[string]error // Mapping between object name and an error.
+	Headers        http.Header      // Response HTTP headers.
+}
+
+// BulkDelete deletes objects in one go.
+//
+// Some servers may not accept bulk-delete requests since bulk-delete is
+// an optional feature of swift.
+func (c *Connection) BulkDelete(container string, objectNames []string) (result BulkDeleteResult, err error) {
+	var buffer bytes.Buffer
+	for _, s := range objectNames {
+		buffer.WriteString(fmt.Sprintf("/%s/%s\n", container,
+			url.QueryEscape(s)))
+	}
+	resp, _, err := c.storage(RequestOpts{
+		Container:  container,
+		Operation:  "DELETE",
+		Parameters: url.Values{"bulk-delete": []string{"1"}},
+		Headers: Headers{
+			"Accept":       "application/json",
+			"Content-Type": "text/plain",
+		},
+		Body: &buffer,
+	})
+	if err != nil {
+		return
+	}
+	var jsonResult struct {
+		NotFound int64  `json:"Number Not Found"`
+		Status   string `json:"Response Status"`
+		Errors   [][]string
+		Deleted  int64 `json:"Number Deleted"`
+	}
+	err = readJson(resp, &jsonResult)
+	if err != nil {
+		return
+	}
+
+	err = parseResponseStatus(jsonResult.Status, objectErrorMap)
+	result.NumberNotFound = jsonResult.NotFound
+	result.NumberDeleted = jsonResult.Deleted
+	result.Headers = resp.Header
+	el := make(map[string]error, len(jsonResult.Errors))
+	for _, t := range jsonResult.Errors {
+		if len(t) != 2 {
+			continue
+		}
+		el[t[0]] = parseResponseStatus(t[1], objectErrorMap)
+	}
+	result.Errors = el
+	return
+}
+
 // Object returns info about a single object including any metadata in the header.
 //
 // May return ObjectNotFound.
