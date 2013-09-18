@@ -22,6 +22,9 @@ const (
 	DefaultUserAgent    = "goswift/1.0"         // Default user agent
 	DefaultRetries      = 3                     // Default number of retries on token expiry
 	TimeFormat          = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
+	UploadTar           = "tar"                 // Data format specifier for Connection.BulkUpload().
+	UploadTarGzip       = "tar.gz"              // Data format specifier for Connection.BulkUpload().
+	UploadTarBzip2      = "tar.bz2"             // Data format specifier for Connection.BulkUpload().
 	allContainersLimit  = 10000                 // Number of containers to fetch at once
 	allObjectsLimit     = 10000                 // Number objects to fetch at once
 	allObjectsChanLimit = 1000                  // ...when fetching to a channel
@@ -105,6 +108,7 @@ var (
 	ObjectCorrupted     = newError(422, "Object Corrupted")
 	TimeoutError        = newError(408, "Timeout when reading or writing data")
 	Forbidden           = newError(403, "Operation forbidden")
+	TooLargeObject      = newError(413, "Too Large Object")
 
 	// Mappings for authentication errors
 	authErrorMap = errorMap{
@@ -123,6 +127,7 @@ var (
 	objectErrorMap = errorMap{
 		403: Forbidden,
 		404: ObjectNotFound,
+		413: TooLargeObject,
 		422: ObjectCorrupted,
 	}
 )
@@ -1359,6 +1364,10 @@ type BulkDeleteResult struct {
 //
 // Some servers may not accept bulk-delete requests since bulk-delete is
 // an optional feature of swift - these will return the Forbidden error.
+//
+// See also:
+// * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-bulk-delete.html
+// * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Bulk_Delete-d1e2338.html
 func (c *Connection) BulkDelete(container string, objectNames []string) (result BulkDeleteResult, err error) {
 	var buffer bytes.Buffer
 	for _, s := range objectNames {
@@ -1392,6 +1401,76 @@ func (c *Connection) BulkDelete(container string, objectNames []string) (result 
 	err = parseResponseStatus(jsonResult.Status, objectErrorMap)
 	result.NumberNotFound = jsonResult.NotFound
 	result.NumberDeleted = jsonResult.Deleted
+	result.Headers = headers
+	el := make(map[string]error, len(jsonResult.Errors))
+	for _, t := range jsonResult.Errors {
+		if len(t) != 2 {
+			continue
+		}
+		el[t[0]] = parseResponseStatus(t[1], objectErrorMap)
+	}
+	result.Errors = el
+	return
+}
+
+// BulkUploadResult stores results of BulkUpload().
+//
+// Individual errors may (or may not) be returned by Errors.
+// Errors is a map whose keys are a full path of where an object was
+// to be created, and whose values are Error objects.  A full path of
+// object looks like "/API_VERSION/USER_ACCOUNT/CONTAINER/OBJECT_PATH".
+type BulkUploadResult struct {
+	NumberCreated int64            // # of created objects.
+	Errors        map[string]error // Mapping between object name and an error.
+	Headers       Headers          // Response HTTP headers.
+}
+
+// BulkUpload uploads multiple files in one operation.
+//
+// uploadPath can be empty, a container name, or a pseudo-directory
+// within a container.  If uploadPath is empty, new containers may be
+// automatically created.
+//
+// Files are read from dataStream.  The format of the stream is specified
+// by the format parameter.  Available formats are:
+// * UploadTar       - Plain tar stream.
+// * UploadTarGzip   - Gzip compressed tar stream.
+// * UploadTarBzip2  - Bzip2 compressed tar stream.
+//
+// Some servers may not accept bulk-upload requests since bulk-upload is
+// an optional feature of swift - these will return the Forbidden error.
+//
+// See also:
+// * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-extract-archive.html
+// * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Extract_Archive-d1e2338.html
+func (c *Connection) BulkUpload(uploadPath string, dataStream io.Reader, format string) (result BulkUploadResult, err error) {
+	// The following code abuses Container parameter intentionally.
+	// The best fix might be to rename Container to UploadPath.
+	resp, headers, err := c.storage(RequestOpts{
+		Container:  uploadPath,
+		Operation:  "PUT",
+		Parameters: url.Values{"extract-archive": []string{format}},
+		Headers: Headers{
+			"Accept": "application/json",
+		},
+		ErrorMap: ContainerErrorMap,
+		Body:     dataStream,
+	})
+	if err != nil {
+		return
+	}
+	var jsonResult struct {
+		Created int64  `json:"Number Files Created"`
+		Status  string `json:"Response Status"`
+		Errors  [][]string
+	}
+	err = readJson(resp, &jsonResult)
+	if err != nil {
+		return
+	}
+
+	err = parseResponseStatus(jsonResult.Status, objectErrorMap)
+	result.NumberCreated = jsonResult.Created
 	result.Headers = headers
 	el := make(map[string]error, len(jsonResult.Errors))
 	for _, t := range jsonResult.Errors {
