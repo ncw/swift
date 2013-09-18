@@ -11,6 +11,7 @@
 package swift_test
 
 import (
+	"archive/tar"
 	"bytes"
 	"crypto/md5"
 	"fmt"
@@ -968,6 +969,54 @@ func TestBulkDelete(t *testing.T) {
 		t.Error("Expected 1, actual:", result.NumberDeleted)
 	}
 	t.Log("Errors:", result.Errors)
+}
+
+func TestBulkUpload(t *testing.T) {
+	buffer := new(bytes.Buffer)
+	ds := tar.NewWriter(buffer)
+	var files = []struct{ Name, Body string }{
+		{OBJECT, CONTENTS},
+		{OBJECT2, CONTENTS2},
+	}
+	for _, file := range files {
+		hdr := &tar.Header{
+			Name: file.Name,
+			Size: int64(len(file.Body)),
+		}
+		if err := ds.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ds.Write([]byte(file.Body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ds.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := c.BulkUpload(CONTAINER, buffer, swift.UploadTar)
+	if err == swift.Forbidden {
+		t.Log("Server doesn't support BulkUpload - skipping test")
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NumberCreated != 2 {
+		t.Error("Expected 2, actual:", result.NumberCreated)
+	}
+	t.Log("Errors:", result.Errors)
+
+	_, _, err = c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error("Expecting object to be found")
+	}
+	_, _, err = c.Object(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Error("Expecting object to be found")
+	}
+	c.ObjectDelete(CONTAINER, OBJECT)
+	c.ObjectDelete(CONTAINER, OBJECT2)
 }
 
 func TestObjectDifficultName(t *testing.T) {
