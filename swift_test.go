@@ -994,7 +994,7 @@ func TestBulkUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := c.BulkUpload(CONTAINER, buffer, swift.UploadTar)
+	result, err := c.BulkUpload(CONTAINER, buffer, swift.UploadTar, nil)
 	if err == swift.Forbidden {
 		t.Log("Server doesn't support BulkUpload - skipping test")
 		return

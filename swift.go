@@ -1443,16 +1443,18 @@ type BulkUploadResult struct {
 // See also:
 // * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-extract-archive.html
 // * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Extract_Archive-d1e2338.html
-func (c *Connection) BulkUpload(uploadPath string, dataStream io.Reader, format string) (result BulkUploadResult, err error) {
+func (c *Connection) BulkUpload(uploadPath string, dataStream io.Reader, format string, h Headers) (result BulkUploadResult, err error) {
+	extraHeaders := Headers{"Accept": "application/json"}
+	for key, value := range h {
+		extraHeaders[key] = value
+	}
 	// The following code abuses Container parameter intentionally.
 	// The best fix might be to rename Container to UploadPath.
 	resp, headers, err := c.storage(RequestOpts{
 		Container:  uploadPath,
 		Operation:  "PUT",
 		Parameters: url.Values{"extract-archive": []string{format}},
-		Headers: Headers{
-			"Accept": "application/json",
-		},
+		Headers: extraHeaders,
 		ErrorMap: ContainerErrorMap,
 		Body:     dataStream,
 	})
