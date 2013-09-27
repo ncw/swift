@@ -1454,9 +1454,9 @@ func (c *Connection) BulkUpload(uploadPath string, dataStream io.Reader, format 
 		Container:  uploadPath,
 		Operation:  "PUT",
 		Parameters: url.Values{"extract-archive": []string{format}},
-		Headers: extraHeaders,
-		ErrorMap: ContainerErrorMap,
-		Body:     dataStream,
+		Headers:    extraHeaders,
+		ErrorMap:   ContainerErrorMap,
+		Body:       dataStream,
 	})
 	if err != nil {
 		return
