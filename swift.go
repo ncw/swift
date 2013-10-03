@@ -1222,6 +1222,18 @@ func (file *ObjectOpenFile) Seek(offset int64, whence int) (newPos int64, err er
 	return
 }
 
+// Length gets the objects content length either from a cached copy or
+// from the server.
+func (file *ObjectOpenFile) Length() (int64, error) {
+	if !file.lengthOk {
+		info, _, err := file.connection.Object(file.container, file.objectName)
+		file.length = info.Bytes
+		file.lengthOk = (err == nil)
+		return file.length, err
+	}
+	return file.length, nil
+}
+
 // Close the object and checks the length and md5sum if it was
 // required and all the object was read
 func (file *ObjectOpenFile) Close() (err error) {
