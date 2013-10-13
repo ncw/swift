@@ -10,8 +10,12 @@ import (
 )
 
 // Cancel the request
-func cancelRequest(tr *http.Transport, req *http.Request) {
-	tr.CancelRequest(req)
+func cancelRequest(transport http.RoundTripper, req *http.Request) {
+	if tr, ok := transport.(interface {
+		CancelRequest(*http.Request)
+	}); ok {
+		tr.CancelRequest(req)
+	}
 }
 
 // Reset a timer

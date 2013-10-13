@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"github.com/ncw/swift"
 	"io"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -40,7 +41,34 @@ const (
 	CONTENT_MD5        = "827ccb0eea8a706c4c34a16891f84e7b"
 )
 
-// Test functions are run in order - this one must be first!
+type someTransport struct{ http.Transport }
+
+func TestTransport(t *testing.T) {
+	UserName := os.Getenv("SWIFT_API_USER")
+	ApiKey := os.Getenv("SWIFT_API_KEY")
+	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
+	if UserName == "" || ApiKey == "" || AuthUrl == "" {
+		t.Fatal("SWIFT_API_USER, SWIFT_API_KEY and SWIFT_AUTH_URL not all set")
+	}
+	tr := &someTransport{Transport: http.Transport{MaxIdleConnsPerHost: 2048}}
+	ct := swift.Connection{
+		UserName:  UserName,
+		ApiKey:    ApiKey,
+		AuthUrl:   AuthUrl,
+		Tenant:    os.Getenv("SWIFT_TENANT"),
+		TenantId:  os.Getenv("SWIFT_TENANT_ID"),
+		Transport: tr,
+	}
+	err := ct.Authenticate()
+	if err != nil {
+		t.Fatal("Auth failed", err)
+	}
+	if !ct.Authenticated() {
+		t.Fatal("Not authenticated")
+	}
+}
+
+// The following Test functions are run in order - this one must come before the others!
 func TestAuthenticate(t *testing.T) {
 	UserName := os.Getenv("SWIFT_API_USER")
 	ApiKey := os.Getenv("SWIFT_API_KEY")
