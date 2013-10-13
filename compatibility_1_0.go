@@ -11,7 +11,7 @@ import (
 )
 
 // Cancel the request - doesn't work under < go 1.1
-func cancelRequest(tr *http.Transport, req *http.Request) {
+func cancelRequest(transport http.RoundTripper, req *http.Request) {
 	log.Printf("Tried to cancel a request but couldn't - recompile with go 1.1")
 }
 

@@ -48,25 +48,47 @@ const (
 //  Rackspace v2        https://identity.api.rackspacecloud.com/v2.0
 //  Memset Memstore UK  https://auth.storage.memset.com/v1.0
 //  Memstore v2         https://auth.storage.memset.com/v2.0
+//
+// When using Google Appengine you must provide the Connection with an appengine-specific Transport:
+//
+//	import (
+//		"appengine/urlfetch"
+//		"fmt"
+//		"github.com/ncw/swift"
+//	)
+//
+//	func handler(w http.ResponseWriter, r *http.Request) {
+//		ctx := appengine.NewContext(r)
+//		tr := urlfetch.Transport{Context: ctx}
+//		c := swift.Connection{
+//			UserName:  "user",
+//			ApiKey:    "key",
+//			AuthUrl:   "auth_url",
+//			Transport: tr,
+//		}
+//		_ := c.Authenticate()
+//		containers, _ := c.ContainerNames(nil)
+//		fmt.Fprintf(w, "containers: %q", containers)
+//	}
 type Connection struct {
 	// Parameters - fill these in before calling Authenticate
 	// They are all optional except UserName, ApiKey and AuthUrl
-	UserName       string        // UserName for api
-	ApiKey         string        // Key for api access
-	AuthUrl        string        // Auth URL
-	Retries        int           // Retries on error (default is 3)
-	UserAgent      string        // Http User agent (default goswift/1.0)
-	ConnectTimeout time.Duration // Connect channel timeout (default 10s)
-	Timeout        time.Duration // Data channel timeout (default 60s)
-	Region         string        // Region to use eg "LON", "ORD" - default is use first region (V2 auth only)
-	AuthVersion    int           // Set to 1 or 2 or leave at 0 for autodetect
-	Internal       bool          // Set this to true to use the the internal / service network
-	Tenant         string        // Name of the tenant (v2 auth only)
-	TenantId       string        // Id of the tenant (v2 auth only)
+	UserName       string            // UserName for api
+	ApiKey         string            // Key for api access
+	AuthUrl        string            // Auth URL
+	Retries        int               // Retries on error (default is 3)
+	UserAgent      string            // Http User agent (default goswift/1.0)
+	ConnectTimeout time.Duration     // Connect channel timeout (default 10s)
+	Timeout        time.Duration     // Data channel timeout (default 60s)
+	Region         string            // Region to use eg "LON", "ORD" - default is use first region (V2 auth only)
+	AuthVersion    int               // Set to 1 or 2 or leave at 0 for autodetect
+	Internal       bool              // Set this to true to use the the internal / service network
+	Tenant         string            // Name of the tenant (v2 auth only)
+	TenantId       string            // Id of the tenant (v2 auth only)
+	Transport      http.RoundTripper // Optional specialised http.Transport (eg. for Google Appengine)
 	// These are filled in after Authenticate is called as are the defaults for above
 	storageUrl string
 	authToken  string
-	tr         *http.Transport
 	client     *http.Client
 	Auth       Authenticator // the current authenticator
 }
@@ -191,7 +213,7 @@ func (c *Connection) doTimeoutRequest(timer *time.Timer, req *http.Request) (*ht
 		return r.resp, r.err
 	case <-timer.C:
 		// Kill the connection on timeout so we don't leak sockets or goroutines
-		cancelRequest(c.tr, req)
+		cancelRequest(c.Transport, req)
 		return nil, TimeoutError
 	}
 	panic("unreachable") // For Go 1.0
@@ -212,8 +234,8 @@ func (c *Connection) Authenticate() (err error) {
 	if c.Timeout == 0 {
 		c.Timeout = 60 * time.Second
 	}
-	if c.tr == nil {
-		c.tr = &http.Transport{
+	if c.Transport == nil {
+		c.Transport = &http.Transport{
 			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
 			//		DisableCompression: true,
 			MaxIdleConnsPerHost: 2048,
@@ -222,12 +244,12 @@ func (c *Connection) Authenticate() (err error) {
 	if c.client == nil {
 		c.client = &http.Client{
 			//		CheckRedirect: redirectPolicyFunc,
-			Transport: c.tr,
+			Transport: c.Transport,
 		}
 	}
 	// Flush the keepalives connection - if we are
 	// re-authenticating then stuff has gone wrong
-	c.tr.CloseIdleConnections()
+	flushKeepaliveConnections(c.Transport)
 	c.Auth, err = newAuth(c.AuthUrl, c.AuthVersion)
 	if err != nil {
 		return err
@@ -245,7 +267,7 @@ func (c *Connection) Authenticate() (err error) {
 		checkClose(resp.Body, &err)
 		// Flush the auth connection - we don't want to keep
 		// it open if keepalives were enabled
-		c.tr.CloseIdleConnections()
+		flushKeepaliveConnections(c.Transport)
 	}()
 	if err = c.parseHeaders(resp, authErrorMap); err != nil {
 		return
@@ -260,6 +282,15 @@ func (c *Connection) Authenticate() (err error) {
 		return newError(0, "Response didn't have storage url and auth token")
 	}
 	return nil
+}
+
+// flushKeepaliveConnections is called to flush pending requests after an error.
+func flushKeepaliveConnections(transport http.RoundTripper) {
+	if tr, ok := transport.(interface {
+		CloseIdleConnections()
+	}); ok {
+		tr.CloseIdleConnections()
+	}
 }
 
 // UnAuthenticate removes the authentication from the Connection.
@@ -374,7 +405,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 	} else {
 		// Cancel the request on timeout
 		cancel := func() {
-			cancelRequest(c.tr, req)
+			cancelRequest(c.Transport, req)
 		}
 		// Wrap resp.Body to make it obey an idle timeout
 		resp.Body = newTimeoutReader(resp.Body, c.Timeout, cancel)
