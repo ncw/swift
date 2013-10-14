@@ -1492,6 +1492,11 @@ func (c *Connection) BulkUpload(uploadPath string, dataStream io.Reader, format 
 	if err != nil {
 		return
 	}
+	// Detect old servers which don't support this feature
+	if headers["Content-Type"] != "application/json" {
+		err = Forbidden
+		return
+	}
 	var jsonResult struct {
 		Created int64  `json:"Number Files Created"`
 		Status  string `json:"Response Status"`
@@ -1651,6 +1656,9 @@ func (c *Connection) ObjectUpdateContentType(container string, objectName string
 // VersionContainerCreate is a helper method for creating and enabling version controlled containers.
 //
 // It builds the current object container, the non-current object version container, and enables versioning.
+//
+// If the server doesn't support versioning then it will return
+// Forbidden however it will have created both the containers at that point.
 func (c *Connection) VersionContainerCreate(current, version string) error {
 	if err := c.ContainerCreate(version, nil); err != nil {
 		return err
@@ -1665,10 +1673,21 @@ func (c *Connection) VersionContainerCreate(current, version string) error {
 }
 
 // VersionEnable enables versioning on the current container with version as the tracking container.
+//
+// May return Forbidden if this isn't supported by the server
 func (c *Connection) VersionEnable(current, version string) error {
 	h := Headers{"X-Versions-Location": version}
 	if err := c.ContainerUpdate(current, h); err != nil {
 		return err
+	}
+	// Check to see if the header was set properly
+	_, headers, err := c.Container(current)
+	if err != nil {
+		return err
+	}
+	// If failed to set versions header, return Forbidden as the server doesn't support this
+	if headers["X-Versions-Location"] != version {
+		return Forbidden
 	}
 	return nil
 }
