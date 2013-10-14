@@ -24,9 +24,10 @@ import (
 )
 
 var (
-	c  swift.Connection
-	m1 = swift.Metadata{"Hello": "1", "potato-Salad": "2"}
-	m2 = swift.Metadata{"hello": "", "potato-salad": ""}
+	c                swift.Connection
+	m1               = swift.Metadata{"Hello": "1", "potato-Salad": "2"}
+	m2               = swift.Metadata{"hello": "", "potato-salad": ""}
+	skipVersionTests = false
 )
 
 const (
@@ -52,12 +53,14 @@ func TestTransport(t *testing.T) {
 	}
 	tr := &someTransport{Transport: http.Transport{MaxIdleConnsPerHost: 2048}}
 	ct := swift.Connection{
-		UserName:  UserName,
-		ApiKey:    ApiKey,
-		AuthUrl:   AuthUrl,
-		Tenant:    os.Getenv("SWIFT_TENANT"),
-		TenantId:  os.Getenv("SWIFT_TENANT_ID"),
-		Transport: tr,
+		UserName:       UserName,
+		ApiKey:         ApiKey,
+		AuthUrl:        AuthUrl,
+		Tenant:         os.Getenv("SWIFT_TENANT"),
+		TenantId:       os.Getenv("SWIFT_TENANT_ID"),
+		Transport:      tr,
+		ConnectTimeout: 60 * time.Second,
+		Timeout:        60 * time.Second,
 	}
 	err := ct.Authenticate()
 	if err != nil {
@@ -879,11 +882,20 @@ func TestObjectUpdateContentType(t *testing.T) {
 
 func TestVersionContainerCreate(t *testing.T) {
 	if err := c.VersionContainerCreate(CURRENT_CONTAINER, VERSIONS_CONTAINER); err != nil {
+		if err == swift.Forbidden {
+			t.Log("Server doesn't support Versions - skipping test")
+			skipVersionTests = true
+			return
+		}
 		t.Fatal(err)
 	}
 }
 
 func TestVersionObjectAdd(t *testing.T) {
+	if skipVersionTests {
+		t.Log("Server doesn't support Versions - skipping test")
+		return
+	}
 	// Version 1
 	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS, ""); err != nil {
 		t.Fatal(err)
@@ -911,6 +923,10 @@ func TestVersionObjectAdd(t *testing.T) {
 }
 
 func TestVersionObjectList(t *testing.T) {
+	if skipVersionTests {
+		t.Log("Server doesn't support Versions - skipping test")
+		return
+	}
 	list, err := c.VersionObjectList(VERSIONS_CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
@@ -924,6 +940,10 @@ func TestVersionObjectList(t *testing.T) {
 }
 
 func TestVersionObjectDelete(t *testing.T) {
+	if skipVersionTests {
+		t.Log("Server doesn't support Versions - skipping test")
+		return
+	}
 	// Delete Version 3
 	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
@@ -942,18 +962,42 @@ func TestVersionObjectDelete(t *testing.T) {
 	}
 }
 
+// cleanUpContainer deletes everything in the container and then the
+// container.  It expects the container to be empty and if it wasn't
+// it logs an error.
+func cleanUpContainer(t *testing.T, container string) {
+	objects, err := c.Objects(container, nil)
+	if err != nil {
+		t.Error(err, container)
+	} else {
+		if len(objects) != 0 {
+			t.Error("Container not empty", container)
+		}
+		for _, object := range objects {
+			t.Log("Deleting spurious", object.Name)
+			err = c.ObjectDelete(container, object.Name)
+			if err != nil {
+				t.Error(err, container)
+			}
+		}
+	}
+
+	if err := c.ContainerDelete(container); err != nil {
+		t.Error(err, container)
+	}
+}
+
 func TestVersionDeleteContent(t *testing.T) {
-	// Delete Version 1
-	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
-		t.Fatal(err)
+	if skipVersionTests {
+		t.Log("Server doesn't support Versions - skipping test")
+	} else {
+		// Delete Version 1
+		if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
+			t.Fatal(err)
+		}
 	}
-	// Clean up containers
-	if err := c.ContainerDelete(VERSIONS_CONTAINER); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.ContainerDelete(CURRENT_CONTAINER); err != nil {
-		t.Fatal(err)
-	}
+	cleanUpContainer(t, VERSIONS_CONTAINER)
+	cleanUpContainer(t, CURRENT_CONTAINER)
 }
 
 func TestObjectDelete(t *testing.T) {
