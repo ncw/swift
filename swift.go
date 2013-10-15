@@ -221,32 +221,7 @@ func (c *Connection) doTimeoutRequest(timer *time.Timer, req *http.Request) (*ht
 
 // Authenticate connects to the Swift server.
 func (c *Connection) Authenticate() (err error) {
-	// Set defaults if not set
-	if c.UserAgent == "" {
-		c.UserAgent = DefaultUserAgent
-	}
-	if c.Retries == 0 {
-		c.Retries = DefaultRetries
-	}
-	if c.ConnectTimeout == 0 {
-		c.ConnectTimeout = 10 * time.Second
-	}
-	if c.Timeout == 0 {
-		c.Timeout = 60 * time.Second
-	}
-	if c.Transport == nil {
-		c.Transport = &http.Transport{
-			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
-			//		DisableCompression: true,
-			MaxIdleConnsPerHost: 2048,
-		}
-	}
-	if c.client == nil {
-		c.client = &http.Client{
-			//		CheckRedirect: redirectPolicyFunc,
-			Transport: c.Transport,
-		}
-	}
+	c.Init()
 	// Flush the keepalives connection - if we are
 	// re-authenticating then stuff has gone wrong
 	flushKeepaliveConnections(c.Transport)
@@ -282,6 +257,70 @@ func (c *Connection) Authenticate() (err error) {
 		return newError(0, "Response didn't have storage url and auth token")
 	}
 	return nil
+}
+
+// Init sets default options and configures the http client and transport. If an
+// auth token has been cached then you may call API methods. Otherwise you
+// should call Authenticate() (which calls Init for you).
+//
+//	import (
+//		"appengine"
+//		"appengine/urlfetch"
+//		"appengine/memcache"
+//		"fmt"
+//		"github.com/ncw/swift"
+//	)
+//
+//	func handler(w http.ResponseWriter, r *http.Request) {
+//		c := GetSwiftConnectionFromMemcache(appengine.NewContext(r))
+//		containers, _ := c.ContainerNames(nil)
+//		fmt.Fprintf(w, "containers: %q", containers)
+//	}
+//
+//	func GetSwiftConnectionFromMemcache(ctx appengine.Context) *swift.Connection {
+//		connection := &swift.Connection{Transport: &urlfetch.Transport{Context: ctx}}
+//		_, err := memcache.JSON.Get(ctx, "SwiftConnection", &connection)
+//		if err == memcache.ErrCacheMiss {
+//			connection.UserName = "user"
+//			connection.ApiKey   = "key"
+//			connection.AuthUrl  = "auth_url"
+//			_ := connection.Authenticate()
+//			_ := memcache.JSON.Set(ctx, &memcache.Item{Key: "SwiftConnection", Object: connection})
+//		} else {
+//			connection.Init()
+//		}
+//		return connection
+//	}
+func (c *Connection) Init() {
+	// Set defaults if not set
+	if c.UserAgent == "" {
+		c.UserAgent = DefaultUserAgent
+	}
+	if c.Retries == 0 {
+		c.Retries = DefaultRetries
+	}
+	if c.ConnectTimeout == 0 {
+		c.ConnectTimeout = 10 * time.Second
+	}
+	if c.Timeout == 0 {
+		c.Timeout = 60 * time.Second
+	}
+	if c.Transport == nil {
+		c.Transport = &http.Transport{
+			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
+			//		DisableCompression: true,
+			MaxIdleConnsPerHost: 2048,
+		}
+	}
+	if c.client == nil {
+		c.client = &http.Client{
+			//		CheckRedirect: redirectPolicyFunc,
+			Transport: c.Transport,
+		}
+	}
+	if c.client.Transport != c.Transport {
+		c.client.Transport = c.Transport // Public Transport may have been changed.
+	}
 }
 
 // flushKeepaliveConnections is called to flush pending requests after an error.
@@ -1710,4 +1749,67 @@ func (c *Connection) VersionObjectList(version, object string) ([]string, error)
 		Prefix: fmt.Sprintf("%03x", len(object)) + object + "/",
 	}
 	return c.ObjectNames(version, opts)
+}
+
+// The fields of Connection which can be saved with the encoding packages.
+type connectionState struct {
+	UserName       string
+	ApiKey         string
+	AuthUrl        string
+	Retries        int
+	UserAgent      string
+	ConnectTimeout time.Duration
+	Timeout        time.Duration
+	Region         string
+	AuthVersion    int
+	Internal       bool
+	Tenant         string
+	TenantId       string
+	// The following connection-private fields are also exported.
+	StorageUrl string
+	AuthToken  string
+}
+
+func (c *Connection) MarshalJSON() ([]byte, error) {
+	state := connectionState{
+		UserName:       c.UserName,
+		ApiKey:         c.ApiKey,
+		AuthUrl:        c.AuthUrl,
+		Retries:        c.Retries,
+		UserAgent:      c.UserAgent,
+		ConnectTimeout: c.ConnectTimeout,
+		Timeout:        c.Timeout,
+		Region:         c.Region,
+		AuthVersion:    c.AuthVersion,
+		Internal:       c.Internal,
+		Tenant:         c.Tenant,
+		TenantId:       c.TenantId,
+		StorageUrl:     c.storageUrl,
+		AuthToken:      c.authToken,
+	}
+	return json.Marshal(&state)
+}
+
+func (c *Connection) UnmarshalJSON(b []byte) error {
+	var state connectionState
+	if err := json.Unmarshal(b, &state); err != nil {
+		return err
+	}
+	c.UserName = state.UserName
+	c.ApiKey = state.ApiKey
+	c.AuthUrl = state.AuthUrl
+	c.Retries = state.Retries
+	c.UserAgent = state.UserAgent
+	c.ConnectTimeout = state.ConnectTimeout
+	c.Timeout = state.Timeout
+	c.Region = state.Region
+	c.AuthVersion = state.AuthVersion
+	c.Internal = state.Internal
+	c.Tenant = state.Tenant
+	c.TenantId = state.TenantId
+	c.storageUrl = state.StorageUrl
+	c.authToken = state.AuthToken
+	c.Init()
+
+	return nil
 }
