@@ -1342,7 +1342,7 @@ func (c *Connection) ObjectGetString(container string, objectName string) (conte
 
 // ObjectDelete deletes the object.
 //
-// May return ObjectDoesNotExist if the object isn't found
+// May return ObjectNotFound if the object isn't found
 func (c *Connection) ObjectDelete(container string, objectName string) error {
 	_, _, err := c.storage(RequestOpts{
 		Container:  container,
