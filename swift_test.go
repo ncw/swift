@@ -456,8 +456,8 @@ func TestObjectOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != int64(len(CONTENTS)) {
-		t.Fatal("Wrong length", n, len(CONTENTS))
+	if n != CONTENT_SIZE {
+		t.Fatal("Wrong length", n, CONTENT_SIZE)
 	}
 	if buf.String() != CONTENTS {
 		t.Error("Contents wrong")
@@ -479,10 +479,29 @@ func TestObjectOpenPartial(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n != 1 {
-		t.Fatal("Wrong length", n, len(CONTENTS))
+		t.Fatal("Wrong length", n, CONTENT_SIZE)
 	}
 	if buf.String() != CONTENTS[:1] {
 		t.Error("Contents wrong")
+	}
+	err = file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestObjectOpenLength(t *testing.T) {
+	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// FIXME ideally this would check both branches of the Length() code
+	n, err := file.Length()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != CONTENT_SIZE {
+		t.Fatal("Wrong length", n, CONTENT_SIZE)
 	}
 	err = file.Close()
 	if err != nil {
