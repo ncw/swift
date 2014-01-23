@@ -139,7 +139,9 @@ func TestAccountUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compareMaps(t, headers.AccountMetadata(), map[string]string{"hello": "1", "potato-salad": "2"})
+	m := headers.AccountMetadata()
+	delete(m, "temp-url-key") // remove X-Account-Meta-Temp-URL-Key if set
+	compareMaps(t, m, map[string]string{"hello": "1", "potato-salad": "2"})
 
 	err = c.AccountUpdate(m2.AccountHeaders())
 	if err != nil {
@@ -150,7 +152,9 @@ func TestAccountUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compareMaps(t, headers.AccountMetadata(), map[string]string{})
+	m = headers.AccountMetadata()
+	delete(m, "temp-url-key") // remove X-Account-Meta-Temp-URL-Key if set
+	compareMaps(t, m, map[string]string{})
 
 	//fmt.Println(c.Account())
 	//fmt.Println(headers)
