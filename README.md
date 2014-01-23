@@ -94,3 +94,4 @@ Contributors
 - Janika Liiv <janika@toggl.com>
 - Yamamoto, Hirotaka <ymmt2005@gmail.com>
 - Stephen <yo@groks.org>
+- platformpurple <stephen@platformpurple.com>
