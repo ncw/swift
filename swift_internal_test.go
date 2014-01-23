@@ -6,6 +6,7 @@
 package swift
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -324,6 +325,47 @@ func TestInternalAuthenticate(t *testing.T) {
 	}
 	if !c.Authenticated() {
 		t.Error("Didn't authenticate")
+	}
+}
+
+func TestInternalConnectionSerialize(t *testing.T) {
+	server.AddCheck(t).In(Headers{
+		"User-Agent":  DefaultUserAgent,
+		"X-Auth-Key":  APIKEY,
+		"X-Auth-User": USERNAME,
+	}).Out(Headers{
+		"X-Storage-Url": PROXY_URL,
+		"X-Auth-Token":  AUTH_TOKEN,
+	}).Url("/v1.0")
+	defer server.Finished()
+
+	if err := c.Authenticate(); err != nil {
+		t.Fatal(err)
+	}
+
+	j, err := json.Marshal(c)
+	if err != nil {
+		t.Fatalf("Failed to Marshal Connection: %q", err)
+	}
+	var c2 Connection
+	if err := json.Unmarshal(j, &c2); err != nil {
+		t.Fatalf("Failed to Unmarshal JSON: %q", err)
+	}
+
+	if c2.storageUrl != PROXY_URL {
+		t.Error("Bad storage url")
+	}
+	if c2.authToken != AUTH_TOKEN {
+		t.Error("Bad auth token")
+	}
+	if !c2.Authenticated() {
+		t.Error("Didn't authenticate")
+	}
+	if c2.Transport == nil {
+		t.Error("Failed to initialize transport")
+	}
+	if c2.client == nil || (c2.client.Transport != c2.Transport) {
+		t.Error("Connection.client.Transport != Connection.Transport")
 	}
 }
 
