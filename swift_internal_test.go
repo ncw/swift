@@ -316,10 +316,10 @@ func TestInternalAuthenticate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.storageUrl != PROXY_URL {
+	if c.StorageUrl != PROXY_URL {
 		t.Error("Bad storage url")
 	}
-	if c.authToken != AUTH_TOKEN {
+	if c.AuthToken != AUTH_TOKEN {
 		t.Error("Bad auth token")
 	}
 	if !c.Authenticated() {
