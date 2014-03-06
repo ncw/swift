@@ -87,8 +87,8 @@ type Connection struct {
 	TenantId       string            // Id of the tenant (v2 auth only)
 	Transport      http.RoundTripper // Optional specialised http.Transport (eg. for Google Appengine)
 	// These are filled in after Authenticate is called as are the defaults for above
-	storageUrl string
-	authToken  string
+	StorageUrl string
+	AuthToken  string
 	client     *http.Client
 	Auth       Authenticator // the current authenticator
 }
@@ -219,8 +219,7 @@ func (c *Connection) doTimeoutRequest(timer *time.Timer, req *http.Request) (*ht
 	panic("unreachable") // For Go 1.0
 }
 
-// Authenticate connects to the Swift server.
-func (c *Connection) Authenticate() (err error) {
+func (c *Connection) init() {
 	// Set defaults if not set
 	if c.UserAgent == "" {
 		c.UserAgent = DefaultUserAgent
@@ -247,6 +246,11 @@ func (c *Connection) Authenticate() (err error) {
 			Transport: c.Transport,
 		}
 	}
+}
+
+// Authenticate connects to the Swift server.
+func (c *Connection) Authenticate() (err error) {
+	c.init()
 	// Flush the keepalives connection - if we are
 	// re-authenticating then stuff has gone wrong
 	flushKeepaliveConnections(c.Transport)
@@ -276,8 +280,8 @@ func (c *Connection) Authenticate() (err error) {
 	if err != nil {
 		return
 	}
-	c.storageUrl = c.Auth.StorageUrl(c.Internal)
-	c.authToken = c.Auth.Token()
+	c.StorageUrl = c.Auth.StorageUrl(c.Internal)
+	c.AuthToken = c.Auth.Token()
 	if !c.Authenticated() {
 		return newError(0, "Response didn't have storage url and auth token")
 	}
@@ -295,8 +299,8 @@ func flushKeepaliveConnections(transport http.RoundTripper) {
 
 // UnAuthenticate removes the authentication from the Connection.
 func (c *Connection) UnAuthenticate() {
-	c.storageUrl = ""
-	c.authToken = ""
+	c.StorageUrl = ""
+	c.AuthToken = ""
 }
 
 // Authenticated returns a boolean to show if the current connection
@@ -304,7 +308,7 @@ func (c *Connection) UnAuthenticate() {
 //
 // Doesn't actually check the credentials against the server.
 func (c *Connection) Authenticated() bool {
-	return c.storageUrl != "" && c.authToken != ""
+	return c.StorageUrl != "" && c.AuthToken != ""
 }
 
 // RequestOpts contains parameters for Connection.storage.
@@ -336,6 +340,7 @@ type RequestOpts struct {
 //
 // This method is exported so extensions can call it.
 func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response, headers Headers, err error) {
+	c.init()
 	retries := p.Retries
 	if retries == 0 {
 		retries = c.Retries
@@ -377,7 +382,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 			}
 		}
 		req.Header.Add("User-Agent", DefaultUserAgent)
-		req.Header.Add("X-Auth-Token", c.authToken)
+		req.Header.Add("X-Auth-Token", c.AuthToken)
 		resp, err = c.doTimeoutRequest(timer, req)
 		if err != nil {
 			return
@@ -427,7 +432,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 // This will Authenticate if necessary, and re-authenticate if it
 // receives a 401 error which means the token has expired
 func (c *Connection) storage(p RequestOpts) (resp *http.Response, headers Headers, err error) {
-	return c.Call(c.storageUrl, p)
+	return c.Call(c.StorageUrl, p)
 }
 
 // readLines reads the response into an array of strings.
