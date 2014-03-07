@@ -95,3 +95,4 @@ Contributors
 - Yamamoto, Hirotaka <ymmt2005@gmail.com>
 - Stephen <yo@groks.org>
 - platformpurple <stephen@platformpurple.com>
+- Paul Querna <pquerna@apache.org>
