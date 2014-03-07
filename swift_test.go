@@ -14,13 +14,16 @@ import (
 	"archive/tar"
 	"bytes"
 	"crypto/md5"
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
-	"github.com/ncw/swift"
 	"io"
 	"net/http"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/ncw/swift"
 )
 
 var (
@@ -92,6 +95,46 @@ func TestAuthenticate(t *testing.T) {
 	}
 	if !c.Authenticated() {
 		t.Fatal("Not authenticated")
+	}
+}
+
+// Test a connection can be serialized and unserialized with JSON
+func TestSerializeConnectionJson(t *testing.T) {
+	serializedConnection, err := json.Marshal(c)
+	if err != nil {
+		t.Fatalf("Failed to serialize connection: %v", err)
+	}
+	c2 := new(swift.Connection)
+	err = json.Unmarshal(serializedConnection, &c2)
+	if err != nil {
+		t.Fatalf("Failed to unserialize connection: %v", err)
+	}
+	if !c2.Authenticated() {
+		t.Fatal("Should be authenticated")
+	}
+	_, _, err = c2.Account()
+	if err != nil {
+		t.Fatalf("Failed to use unserialized connection: %v", err)
+	}
+}
+
+// Test a connection can be serialized and unserialized with XML
+func TestSerializeConnectionXml(t *testing.T) {
+	serializedConnection, err := xml.Marshal(c)
+	if err != nil {
+		t.Fatalf("Failed to serialize connection: %v", err)
+	}
+	c2 := new(swift.Connection)
+	err = xml.Unmarshal(serializedConnection, &c2)
+	if err != nil {
+		t.Fatalf("Failed to unserialize connection: %v", err)
+	}
+	if !c2.Authenticated() {
+		t.Fatal("Should be authenticated")
+	}
+	_, _, err = c2.Account()
+	if err != nil {
+		t.Fatalf("Failed to use unserialized connection: %v", err)
 	}
 }
 
