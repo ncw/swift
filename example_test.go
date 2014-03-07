@@ -5,16 +5,24 @@ package swift_test
 
 import (
 	"fmt"
+
 	"github.com/ncw/swift"
 )
 
-func Example() {
-	// Create a connection
+func ExampleConnection() {
+	// Create a v1 auth connection
 	c := swift.Connection{
+		// This should be your username
 		UserName: "user",
-		ApiKey:   "key",
-		AuthUrl:  "auth_url",
+		// This should be your api key
+		ApiKey: "key",
+		// This should be a v1 auth url, eg
+		//  Rackspace US        https://auth.api.rackspacecloud.com/v1.0
+		//  Rackspace UK        https://lon.auth.api.rackspacecloud.com/v1.0
+		//  Memset Memstore UK  https://auth.storage.memset.com/v1.0
+		AuthUrl: "auth_url",
 	}
+
 	// Authenticate
 	err := c.Authenticate()
 	if err != nil {
@@ -24,6 +32,26 @@ func Example() {
 	containers, err := c.ContainerNames(nil)
 	fmt.Println(containers)
 	// etc...
+
+	// ------ or alternatively create a v2 connection ------
+
+	// Create a v2 auth connection
+	c = swift.Connection{
+		// This is the sub user for the storage - eg "admin"
+		UserName: "user",
+		// This should be your api key
+		ApiKey: "key",
+		// This should be a version2 auth url, eg
+		//  Rackspace v2        https://identity.api.rackspacecloud.com/v2.0
+		//  Memset Memstore v2  https://auth.storage.memset.com/v2.0
+		AuthUrl: "v2_auth_url",
+		// Region to use - default is use first region if unset
+		Region: "LON",
+		// Name of the tenant - this is likely your username
+		Tenant: "jim",
+	}
+
+	// as above...
 }
 
 var container string

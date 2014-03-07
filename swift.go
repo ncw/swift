@@ -39,7 +39,8 @@ const (
 // override this with the AuthVersion parameter.
 //
 // If using v2 auth you can also set Region in the Connection
-// structure
+// structure.  If you don't set Region you will get the default region
+// which may not be what you want.
 //
 // For reference some common AuthUrls looks like this:
 //
@@ -49,7 +50,8 @@ const (
 //  Memset Memstore UK  https://auth.storage.memset.com/v1.0
 //  Memstore v2         https://auth.storage.memset.com/v2.0
 //
-// When using Google Appengine you must provide the Connection with an appengine-specific Transport:
+// When using Google Appengine you must provide the Connection with an
+// appengine-specific Transport:
 //
 //	import (
 //		"appengine/urlfetch"
