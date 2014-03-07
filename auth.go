@@ -109,8 +109,8 @@ func (auth *v2Auth) request(c *Connection) (*http.Request, error) {
 	v2 := v2AuthRequest{}
 	v2.Auth.ApiKeyCredentials.UserName = c.UserName
 	v2.Auth.ApiKeyCredentials.ApiKey = c.ApiKey
-	v2.Auth.PasswordCredentials.UserName = c.UserName
-	v2.Auth.PasswordCredentials.Password = c.ApiKey
+	// v2.Auth.PasswordCredentials.UserName = c.UserName
+	// v2.Auth.PasswordCredentials.Password = c.ApiKey
 	v2.Auth.Tenant = c.Tenant
 	v2.Auth.TenantId = c.TenantId
 	body, err := json.Marshal(v2)
@@ -188,10 +188,6 @@ type v2AuthRequest struct {
 			UserName string `json:"username"`
 			ApiKey   string `json:"apiKey"`
 		} `json:"RAX-KSKEY:apiKeyCredentials"`
-		PasswordCredentials struct {
-			UserName string `json:"username"`
-			Password string `json:"password"`
-		} `json:"passwordCredentials"`
 		Tenant   string `json:"tenantName,omitempty"`
 		TenantId string `json:"tenantId,omitempty"`
 	} `json:"auth"`
