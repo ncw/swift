@@ -107,8 +107,6 @@ func (auth *v2Auth) request(c *Connection) (*http.Request, error) {
 	auth.Region = c.Region
 	// Create a V2 auth request for the body of the connection
 	v2 := v2AuthRequest{}
-	v2.Auth.ApiKeyCredentials.UserName = c.UserName
-	v2.Auth.ApiKeyCredentials.ApiKey = c.ApiKey
 	v2.Auth.PasswordCredentials.UserName = c.UserName
 	v2.Auth.PasswordCredentials.Password = c.ApiKey
 	v2.Auth.Tenant = c.Tenant
@@ -184,10 +182,6 @@ func (auth *v2Auth) CdnUrl() string {
 // http://docs.openstack.org/api/openstack-identity-service/2.0/content/POST_authenticate_v2.0_tokens_.html
 type v2AuthRequest struct {
 	Auth struct {
-		ApiKeyCredentials struct {
-			UserName string `json:"username"`
-			ApiKey   string `json:"apiKey"`
-		} `json:"RAX-KSKEY:apiKeyCredentials"`
 		PasswordCredentials struct {
 			UserName string `json:"username"`
 			Password string `json:"password"`
