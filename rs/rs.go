@@ -2,9 +2,10 @@ package rs
 
 import (
 	"errors"
-	"github.com/ncw/swift"
 	"net/http"
 	"strconv"
+
+	"github.com/ncw/swift"
 )
 
 // RsConnection is a RackSpace specific wrapper to the core swift library which
@@ -16,11 +17,20 @@ type RsConnection struct {
 
 // manage is similar to the swift storage method, but uses the CDN Management URL for CDN specific calls.
 func (c *RsConnection) manage(p swift.RequestOpts) (resp *http.Response, headers swift.Headers, err error) {
-	if c.cdnUrl == "" {
-		c.cdnUrl = c.Auth.CdnUrl()
+	p.OnReAuth = func() (string, error) {
+		if c.cdnUrl == "" {
+			c.cdnUrl = c.Auth.CdnUrl()
+		}
+		if c.cdnUrl == "" {
+			return "", errors.New("The X-CDN-Management-Url does not exist on the authenticated platform")
+		}
+		return c.cdnUrl, nil
 	}
-	if c.cdnUrl == "" {
-		return nil, nil, errors.New("The X-CDN-Management-Url does not exist on the authenticated platform")
+	if c.Authenticated() {
+		_, err = p.OnReAuth()
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	return c.Connection.Call(c.cdnUrl, p)
 }

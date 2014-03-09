@@ -2,9 +2,10 @@
 package rs_test
 
 import (
-	"github.com/ncw/swift/rs"
 	"os"
 	"testing"
+
+	"github.com/ncw/swift/rs"
 )
 
 var (
@@ -55,6 +56,17 @@ func TestCDNEnable(t *testing.T) {
 	}
 	if _, ok := headers["X-Cdn-Uri"]; !ok {
 		t.Error("Failed to enable CDN for container")
+	}
+}
+
+func TestOnReAuth(t *testing.T) {
+	c2 := rs.RsConnection{}
+	c2.UserName = c.UserName
+	c2.ApiKey = c.ApiKey
+	c2.AuthUrl = c.AuthUrl
+	_, err := c2.ContainerCDNEnable(CONTAINER, 0)
+	if err != nil {
+		t.Fatalf("Failed to reauthenticate: %v", err)
 	}
 }
 
