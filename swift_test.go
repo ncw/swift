@@ -138,6 +138,15 @@ func TestSerializeConnectionXml(t *testing.T) {
 	}
 }
 
+// Test the reauthentication logic
+func TestOnReAuth(t *testing.T) {
+	c2 := c
+	c2.UnAuthenticate()
+	_, _, err := c2.Account()
+	if err != nil {
+		t.Fatalf("Failed to reauthenticate: %v", err)
+	}
+}
 func TestAccount(t *testing.T) {
 	info, headers, err := c.Account()
 	if err != nil {

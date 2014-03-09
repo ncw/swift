@@ -251,6 +251,9 @@ func (c *Connection) setDefaults() {
 }
 
 // Authenticate connects to the Swift server.
+//
+// If you don't call it before calling one of the connection methods
+// then it will be called for you on the first access.
 func (c *Connection) Authenticate() (err error) {
 	c.setDefaults()
 	// Flush the keepalives connection - if we are
@@ -332,6 +335,8 @@ type RequestOpts struct {
 	NoResponse bool
 	Body       io.Reader
 	Retries    int
+	// if set this is called on re-authentication to refresh the targetUrl
+	OnReAuth func() (string, error)
 }
 
 // Call runs a remote command on the targetUrl, returns a
@@ -361,6 +366,12 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 			err = c.Authenticate()
 			if err != nil {
 				return
+			}
+			if p.OnReAuth != nil {
+				targetUrl, err = p.OnReAuth()
+				if err != nil {
+					return
+				}
 			}
 		}
 		var url *url.URL
@@ -442,6 +453,9 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 // This will Authenticate if necessary, and re-authenticate if it
 // receives a 401 error which means the token has expired
 func (c *Connection) storage(p RequestOpts) (resp *http.Response, headers Headers, err error) {
+	p.OnReAuth = func() (string, error) {
+		return c.StorageUrl, nil
+	}
 	return c.Call(c.StorageUrl, p)
 }
 
