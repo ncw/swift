@@ -26,11 +26,12 @@ type Authenticator interface {
 // newAuth - create a new Authenticator from the AuthUrl
 //
 // A hint for AuthVersion can be provided
-func newAuth(AuthUrl string, AuthVersion int) (Authenticator, error) {
+func newAuth(c *Connection) (Authenticator, error) {
+	AuthVersion := c.AuthVersion
 	if AuthVersion == 0 {
-		if strings.Contains(AuthUrl, "v2") {
+		if strings.Contains(c.AuthUrl, "v2") {
 			AuthVersion = 2
-		} else if strings.Contains(AuthUrl, "v1") {
+		} else if strings.Contains(c.AuthUrl, "v1") {
 			AuthVersion = 1
 		} else {
 			return nil, newErrorf(500, "Can't find AuthVersion in AuthUrl - set explicitly")
@@ -40,7 +41,12 @@ func newAuth(AuthUrl string, AuthVersion int) (Authenticator, error) {
 	case 1:
 		return &v1Auth{}, nil
 	case 2:
-		return &v2Auth{}, nil
+		return &v2Auth{
+			// Guess as to whether using API key or
+			// password it will try both eventually so
+			// this is just an optimization.
+			tryApiKey: len(c.ApiKey) >= 32,
+		}, nil
 	}
 	return nil, newErrorf(500, "Auth Version %d not supported", AuthVersion)
 }
@@ -98,22 +104,35 @@ func (auth *v1Auth) CdnUrl() string {
 
 // v2 Authentication
 type v2Auth struct {
-	Auth   *v2AuthResponse
-	Region string
+	Auth      *v2AuthResponse
+	Region    string
+	tryApiKey bool
 }
 
 // v2 Authentication - make request
 func (auth *v2Auth) request(c *Connection) (*http.Request, error) {
 	auth.Region = c.Region
 	// Create a V2 auth request for the body of the connection
-	v2 := v2AuthRequest{}
-	v2.Auth.ApiKeyCredentials.UserName = c.UserName
-	v2.Auth.ApiKeyCredentials.ApiKey = c.ApiKey
-	v2.Auth.PasswordCredentials.UserName = c.UserName
-	v2.Auth.PasswordCredentials.Password = c.ApiKey
-	v2.Auth.Tenant = c.Tenant
-	v2.Auth.TenantId = c.TenantId
-	body, err := json.Marshal(v2)
+	var v2i interface{}
+	if !auth.tryApiKey {
+		// Normal swift authentication
+		v2 := v2AuthRequest{}
+		v2.Auth.PasswordCredentials.UserName = c.UserName
+		v2.Auth.PasswordCredentials.Password = c.ApiKey
+		v2.Auth.Tenant = c.Tenant
+		v2.Auth.TenantId = c.TenantId
+		v2i = v2
+	} else {
+		// Rackspace special with API Key
+		v2 := v2AuthRequestRackspace{}
+		v2.Auth.ApiKeyCredentials.UserName = c.UserName
+		v2.Auth.ApiKeyCredentials.ApiKey = c.ApiKey
+		v2.Auth.Tenant = c.Tenant
+		v2.Auth.TenantId = c.TenantId
+		v2i = v2
+	}
+	auth.tryApiKey = !auth.tryApiKey
+	body, err := json.Marshal(v2i)
 	if err != nil {
 		return nil, err
 	}
@@ -184,14 +203,26 @@ func (auth *v2Auth) CdnUrl() string {
 // http://docs.openstack.org/api/openstack-identity-service/2.0/content/POST_authenticate_v2.0_tokens_.html
 type v2AuthRequest struct {
 	Auth struct {
-		ApiKeyCredentials struct {
-			UserName string `json:"username"`
-			ApiKey   string `json:"apiKey"`
-		} `json:"RAX-KSKEY:apiKeyCredentials"`
 		PasswordCredentials struct {
 			UserName string `json:"username"`
 			Password string `json:"password"`
 		} `json:"passwordCredentials"`
+		Tenant   string `json:"tenantName,omitempty"`
+		TenantId string `json:"tenantId,omitempty"`
+	} `json:"auth"`
+}
+
+// V2 Authentication request - Rackspace variant
+//
+// http://docs.openstack.org/developer/keystone/api_curl_examples.html
+// http://docs.rackspace.com/servers/api/v2/cs-gettingstarted/content/curl_auth.html
+// http://docs.openstack.org/api/openstack-identity-service/2.0/content/POST_authenticate_v2.0_tokens_.html
+type v2AuthRequestRackspace struct {
+	Auth struct {
+		ApiKeyCredentials struct {
+			UserName string `json:"username",`
+			ApiKey   string `json:"apiKey"`
+		} `json:"RAX-KSKEY:apiKeyCredentials"`
 		Tenant   string `json:"tenantName,omitempty"`
 		TenantId string `json:"tenantId,omitempty"`
 	} `json:"auth"`

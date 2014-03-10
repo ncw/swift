@@ -256,10 +256,12 @@ func (c *Connection) Authenticate() (err error) {
 	// Flush the keepalives connection - if we are
 	// re-authenticating then stuff has gone wrong
 	flushKeepaliveConnections(c.Transport)
-	c.Auth, err = newAuth(c.AuthUrl, c.AuthVersion)
+	c.Auth, err = newAuth(c)
 	if err != nil {
 		return err
 	}
+	retries := 1
+again:
 	req, err := c.Auth.request(c)
 	if err != nil {
 		return err
@@ -276,6 +278,12 @@ func (c *Connection) Authenticate() (err error) {
 		flushKeepaliveConnections(c.Transport)
 	}()
 	if err = c.parseHeaders(resp, authErrorMap); err != nil {
+		// Try again for a limited number of times on AuthorizationFailed
+		// This allows us to try some alternate forms of the request
+		if err == AuthorizationFailed && retries > 0 {
+			retries--
+			goto again
+		}
 		return
 	}
 	err = c.Auth.response(resp)
