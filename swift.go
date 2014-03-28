@@ -125,6 +125,7 @@ type errorMap map[int]error
 
 var (
 	// Specific Errors you might want to check for equality
+	BadRequest          = newError(400, "Bad Request")
 	AuthorizationFailed = newError(401, "Authorization Failed")
 	ContainerNotFound   = newError(404, "Container Not Found")
 	ContainerNotEmpty   = newError(409, "Container Not Empty")
@@ -136,12 +137,14 @@ var (
 
 	// Mappings for authentication errors
 	authErrorMap = errorMap{
+		400: BadRequest,
 		401: AuthorizationFailed,
 		403: Forbidden,
 	}
 
 	// Mappings for container errors
 	ContainerErrorMap = errorMap{
+		400: BadRequest,
 		403: Forbidden,
 		404: ContainerNotFound,
 		409: ContainerNotEmpty,
@@ -149,6 +152,7 @@ var (
 
 	// Mappings for object errors
 	objectErrorMap = errorMap{
+		400: BadRequest,
 		403: Forbidden,
 		404: ObjectNotFound,
 		413: TooLargeObject,
@@ -281,9 +285,10 @@ again:
 		flushKeepaliveConnections(c.Transport)
 	}()
 	if err = c.parseHeaders(resp, authErrorMap); err != nil {
-		// Try again for a limited number of times on AuthorizationFailed
-		// This allows us to try some alternate forms of the request
-		if err == AuthorizationFailed && retries > 0 {
+		// Try again for a limited number of times on
+		// AuthorizationFailed or BadRequest. This allows us
+		// to try some alternate forms of the request
+		if (err == AuthorizationFailed || err == BadRequest) && retries > 0 {
 			retries--
 			goto again
 		}
