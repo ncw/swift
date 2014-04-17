@@ -982,7 +982,7 @@ type ObjectCreateFile struct {
 	pipeReader *io.PipeReader // pipe for the caller to use
 	pipeWriter *io.PipeWriter
 	hash       hash.Hash      // hash being build up as we go along
-	done       chan bool      // signals when the upload has finished
+	done       chan struct{}  // signals when the upload has finished
 	resp       *http.Response // valid when done has signalled
 	err        error          // ditto
 	headers    Headers        // ditto
@@ -990,8 +990,14 @@ type ObjectCreateFile struct {
 
 // Write bytes to the object - see io.Writer
 func (file *ObjectCreateFile) Write(p []byte) (n int, err error) {
-	if file.err != nil {
-		return 0, file.err
+	// Check to see if write has finished already
+	select {
+	case <-file.done:
+		if file.err != nil {
+			return 0, file.err
+		}
+		return 0, newError(500, "Write on closed file")
+	default:
 	}
 	if file.checkHash {
 		_, _ = file.hash.Write(p)
@@ -1084,7 +1090,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 		checkHash:  checkHash,
 		pipeReader: pipeReader,
 		pipeWriter: pipeWriter,
-		done:       make(chan bool),
+		done:       make(chan struct{}),
 	}
 	// Run the PUT in the background piping it data
 	go func() {
@@ -1098,7 +1104,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 			ErrorMap:   objectErrorMap,
 		})
 		// Signal finished
-		file.done <- true
+		close(file.done)
 	}()
 	return
 }

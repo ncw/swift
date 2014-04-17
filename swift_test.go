@@ -436,6 +436,12 @@ func TestObjectCreate(t *testing.T) {
 		t.Error("Contents wrong")
 	}
 
+	// Test writing on closed file
+	n, err := out.Write([]byte{0})
+	if err == nil || n != 0 {
+		t.Error("Expecting error and n == 0 writing on closed file", err, n)
+	}
+
 	// Now with hash instead
 	out, err = c.ObjectCreate(CONTAINER, OBJECT2, false, fmt.Sprintf("%x", hash.Sum(nil)), "", nil)
 	if err != nil {
