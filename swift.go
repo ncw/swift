@@ -990,6 +990,9 @@ type ObjectCreateFile struct {
 
 // Write bytes to the object - see io.Writer
 func (file *ObjectCreateFile) Write(p []byte) (n int, err error) {
+	if file.err != nil {
+		return 0, file.err
+	}
 	if file.checkHash {
 		_, _ = file.hash.Write(p)
 	}
