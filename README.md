@@ -96,3 +96,4 @@ Contributors
 - Stephen <yo@groks.org>
 - platformpurple <stephen@platformpurple.com>
 - Paul Querna <pquerna@apache.org>
+- Livio Soares <liviobs@gmail.com>
