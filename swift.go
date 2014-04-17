@@ -263,13 +263,17 @@ func (c *Connection) Authenticate() (err error) {
 	// Flush the keepalives connection - if we are
 	// re-authenticating then stuff has gone wrong
 	flushKeepaliveConnections(c.Transport)
-	c.Auth, err = newAuth(c)
-	if err != nil {
-		return err
+	if c.Auth == nil {
+		c.Auth, err = newAuth(c)
+		if err != nil {
+			return err
+		}
+
 	}
+
 	retries := 1
 again:
-	req, err := c.Auth.request(c)
+	req, err := c.Auth.Request(c)
 	if err != nil {
 		return err
 	}
@@ -294,7 +298,7 @@ again:
 		}
 		return
 	}
-	err = c.Auth.response(resp)
+	err = c.Auth.Response(resp)
 	if err != nil {
 		return
 	}

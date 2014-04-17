@@ -12,8 +12,8 @@ import (
 //
 // This encapsulates the different authentication schemes in use
 type Authenticator interface {
-	request(*Connection) (*http.Request, error)
-	response(resp *http.Response) error
+	Request(*Connection) (*http.Request, error)
+	Response(resp *http.Response) error
 	// The public storage URL - set Internal to true to read
 	// internal/service net URL
 	StorageUrl(Internal bool) string
@@ -59,7 +59,7 @@ type v1Auth struct {
 }
 
 // v1 Authentication - make request
-func (auth *v1Auth) request(c *Connection) (*http.Request, error) {
+func (auth *v1Auth) Request(c *Connection) (*http.Request, error) {
 	req, err := http.NewRequest("GET", c.AuthUrl, nil)
 	if err != nil {
 		return nil, err
@@ -71,7 +71,7 @@ func (auth *v1Auth) request(c *Connection) (*http.Request, error) {
 }
 
 // v1 Authentication - read response
-func (auth *v1Auth) response(resp *http.Response) error {
+func (auth *v1Auth) Response(resp *http.Response) error {
 	auth.Headers = resp.Header
 	return nil
 }
@@ -110,7 +110,7 @@ type v2Auth struct {
 }
 
 // v2 Authentication - make request
-func (auth *v2Auth) request(c *Connection) (*http.Request, error) {
+func (auth *v2Auth) Request(c *Connection) (*http.Request, error) {
 	auth.Region = c.Region
 	// Create a V2 auth request for the body of the connection
 	var v2i interface{}
@@ -150,7 +150,7 @@ func (auth *v2Auth) request(c *Connection) (*http.Request, error) {
 }
 
 // v2 Authentication - read response
-func (auth *v2Auth) response(resp *http.Response) error {
+func (auth *v2Auth) Response(resp *http.Response) error {
 	auth.Auth = new(v2AuthResponse)
 	return readJson(resp, auth.Auth)
 }
