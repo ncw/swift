@@ -45,7 +45,7 @@ func newAuth(c *Connection) (Authenticator, error) {
 			// Guess as to whether using API key or
 			// password it will try both eventually so
 			// this is just an optimization.
-			tryApiKey: len(c.ApiKey) >= 32,
+			useApiKey: len(c.ApiKey) >= 32,
 		}, nil
 	}
 	return nil, newErrorf(500, "Auth Version %d not supported", AuthVersion)
@@ -104,17 +104,24 @@ func (auth *v1Auth) CdnUrl() string {
 
 // v2 Authentication
 type v2Auth struct {
-	Auth      *v2AuthResponse
-	Region    string
-	tryApiKey bool
+	Auth        *v2AuthResponse
+	Region      string
+	useApiKey   bool // if set will use API key not Password
+	useApiKeyOk bool // if set won't change useApiKey any more
+	notFirst    bool // set after first run
 }
 
 // v2 Authentication - make request
 func (auth *v2Auth) Request(c *Connection) (*http.Request, error) {
 	auth.Region = c.Region
+	// Toggle useApiKey if not first run and not OK yet
+	if auth.notFirst && !auth.useApiKeyOk {
+		auth.useApiKey = !auth.useApiKey
+	}
+	auth.notFirst = true
 	// Create a V2 auth request for the body of the connection
 	var v2i interface{}
-	if !auth.tryApiKey {
+	if !auth.useApiKey {
 		// Normal swift authentication
 		v2 := v2AuthRequest{}
 		v2.Auth.PasswordCredentials.UserName = c.UserName
@@ -131,7 +138,6 @@ func (auth *v2Auth) Request(c *Connection) (*http.Request, error) {
 		v2.Auth.TenantId = c.TenantId
 		v2i = v2
 	}
-	auth.tryApiKey = !auth.tryApiKey
 	body, err := json.Marshal(v2i)
 	if err != nil {
 		return nil, err
@@ -152,7 +158,12 @@ func (auth *v2Auth) Request(c *Connection) (*http.Request, error) {
 // v2 Authentication - read response
 func (auth *v2Auth) Response(resp *http.Response) error {
 	auth.Auth = new(v2AuthResponse)
-	return readJson(resp, auth.Auth)
+	err := readJson(resp, auth.Auth)
+	// If successfully read Auth then no need to toggle useApiKey any more
+	if err == nil {
+		auth.useApiKeyOk = true
+	}
+	return err
 }
 
 // Finds the Endpoint Url of "type" from the v2AuthResponse using the
