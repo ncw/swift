@@ -405,6 +405,15 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		if p.Headers != nil {
 			for k, v := range p.Headers {
 				req.Header.Add(k, v)
+				// WAR of 503 error
+				if (k == "Content-Length") {
+					var cl int64
+					cl, err = strconv.ParseInt(v, 10, 64)
+					if err == nil {
+						req.ContentLength = cl;
+						fmt.Println("hoge");
+					}
+				}
 			}
 		}
 		req.Header.Add("User-Agent", DefaultUserAgent)
@@ -1165,7 +1174,11 @@ func (c *Connection) ObjectPut(container string, objectName string, contents io.
 // This is a simplified interface which checks the MD5.
 func (c *Connection) ObjectPutBytes(container string, objectName string, contents []byte, contentType string) (err error) {
 	buf := bytes.NewBuffer(contents)
-	_, err = c.ObjectPut(container, objectName, buf, true, "", contentType, nil)
+	//WAR of 503 error
+	headers := map[string]string{
+		"Content-Length": strconv.FormatInt(int64(len(contents)), 10),
+	}
+	_, err = c.ObjectPut(container, objectName, buf, true, "", contentType, headers)
 	return
 }
 
