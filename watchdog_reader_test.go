@@ -13,13 +13,13 @@ import (
 func testWatchdogReaderTimeout(t *testing.T, initialTimeout, watchdogTimeout time.Duration, expectedTimeout bool) {
 	test := newTestReader(3, 10*time.Millisecond)
 	timer := time.NewTimer(initialTimeout)
-	fired := false
+	firedChan := make(chan bool)
 	started := make(chan bool)
 	go func() {
 		started <- true
 		select {
 		case <-timer.C:
-			fired = true
+			firedChan <- true
 		}
 	}()
 	<-started
@@ -27,6 +27,11 @@ func testWatchdogReaderTimeout(t *testing.T, initialTimeout, watchdogTimeout tim
 	b, err := ioutil.ReadAll(wr)
 	if err != nil || string(b) != "AAA" {
 		t.Fatalf("Bad read %s %s", err, b)
+	}
+	fired := false
+	select {
+	case fired = <-firedChan:
+	default:
 	}
 	if expectedTimeout {
 		if !fired {

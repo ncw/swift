@@ -5,12 +5,14 @@ package swift
 import (
 	"io"
 	"io/ioutil"
+	"sync"
 	"testing"
 	"time"
 )
 
 // An io.ReadCloser for testing
 type testReader struct {
+	sync.Mutex
 	n      int
 	delay  time.Duration
 	closed bool
@@ -31,13 +33,17 @@ func (t *testReader) Read(p []byte) (n int, err error) {
 	}
 	time.Sleep(t.delay)
 	p[0] = 'A'
+	t.Lock()
 	t.n--
+	t.Unlock()
 	return 1, nil
 }
 
 // Close the channel
 func (t *testReader) Close() error {
+	t.Lock()
 	t.closed = true
+	t.Unlock()
 	return nil
 }
 
@@ -82,10 +88,13 @@ func TestTimeoutReaderTimeout(t *testing.T) {
 	if !cancelled {
 		t.Fatal("Not cancelled when should have been")
 	}
-	if test.n == 0 {
+	test.Lock()
+	n := test.n
+	test.Unlock()
+	if n == 0 {
 		t.Fatal("Read all")
 	}
-	if test.n != 3 {
+	if n != 3 {
 		t.Fatal("Didn't read any")
 	}
 	if test.closed {
