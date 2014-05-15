@@ -231,7 +231,7 @@ type v2AuthRequest struct {
 type v2AuthRequestRackspace struct {
 	Auth struct {
 		ApiKeyCredentials struct {
-			UserName string `json:"username",`
+			UserName string `json:"username"`
 			ApiKey   string `json:"apiKey"`
 		} `json:"RAX-KSKEY:apiKeyCredentials"`
 		Tenant   string `json:"tenantName,omitempty"`
