@@ -21,7 +21,9 @@ Usage
 
 See here for full package docs
 
-- http://go.pkgdoc.org/github.com/ncw/swift
+- http://godoc.org/github.com/ncw/swift
+
+[![Build Status](https://travis-ci.org/ncw/swift.png)](https://travis-ci.org/ncw/swift)
 
 Here is a short example from the docs
 
