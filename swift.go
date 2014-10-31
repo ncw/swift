@@ -73,6 +73,11 @@ const (
 //		containers, _ := c.ContainerNames(nil)
 //		fmt.Fprintf(w, "containers: %q", containers)
 //	}
+//
+// If you don't supply a Transport, one is made which relies on
+// http.ProxyFromEnvironment (http://golang.org/pkg/net/http/#ProxyFromEnvironment).
+// This means that the connection will respect the HTTP proxy specified by the
+// environment variables $HTTP_PROXY and $NO_PROXY.
 type Connection struct {
 	// Parameters - fill these in before calling Authenticate
 	// They are all optional except UserName, ApiKey and AuthUrl
@@ -247,6 +252,7 @@ func (c *Connection) setDefaults() {
 		c.Transport = &http.Transport{
 			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
 			//		DisableCompression: true,
+			Proxy:               http.ProxyFromEnvironment,
 			MaxIdleConnsPerHost: 2048,
 		}
 	}
