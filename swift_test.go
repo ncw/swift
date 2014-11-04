@@ -943,10 +943,7 @@ func TestObjectMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = c.Object(CONTAINER, OBJECT)
-	if err != swift.ObjectNotFound {
-		t.Fatal("Expecting object not found not", err)
-	}
+	testExistenceAfterDelete(t, CONTAINER, OBJECT)
 	_, _, err = c.Object(CONTAINER, OBJECT2)
 	if err != nil {
 		t.Fatal(err)
@@ -956,10 +953,7 @@ func TestObjectMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = c.Object(CONTAINER, OBJECT2)
-	if err != swift.ObjectNotFound {
-		t.Fatal("Expecting object not found not", err)
-	}
+	testExistenceAfterDelete(t, CONTAINER, OBJECT2)
 	_, headers, err := c.Object(CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
@@ -1103,11 +1097,27 @@ func TestVersionDeleteContent(t *testing.T) {
 	cleanUpContainer(t, CURRENT_CONTAINER)
 }
 
+// Check for non existence after delete
+// May have to do it a few times to wait for swift to be consistent.
+func testExistenceAfterDelete(t *testing.T, container, object string) {
+	for i := 10; i <= 0; i-- {
+		_, _, err := c.Object(container, object)
+		if err == swift.ObjectNotFound {
+			break
+		}
+		if i == 0 {
+			t.Fatalf("Expecting object %q/%q not found not: err=%v", container, object, err)
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
 func TestObjectDelete(t *testing.T) {
 	err := c.ObjectDelete(CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
+	testExistenceAfterDelete(t, CONTAINER, OBJECT)
 	err = c.ObjectDelete(CONTAINER, OBJECT)
 	if err != swift.ObjectNotFound {
 		t.Fatal("Expecting Object not found", err)
