@@ -252,7 +252,7 @@ func (c *Connection) setDefaults() {
 		c.Transport = &http.Transport{
 			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
 			//		DisableCompression: true,
-			Proxy: http.ProxyFromEnvironment,
+			Proxy:               http.ProxyFromEnvironment,
 			MaxIdleConnsPerHost: 2048,
 		}
 	}
