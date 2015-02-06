@@ -1,8 +1,10 @@
 // This tests the swift packagae
 //
-// It needs access to a real swift server which should be set up in
+// It can be used with a real swift server which should be set up in
 // the environment variables SWIFT_API_USER, SWIFT_API_KEY and
-// SWIFT_AUTH_URL - see Testing in README.md for more info
+// SWIFT_AUTH_URL
+// In case those variables are not defined, a fake Swift server
+// is used instead - see Testing in README.md for more info
 //
 // The functions are designed to run in order and create things the
 // next function tests.  This means that if it goes wrong it is likely
@@ -25,16 +27,20 @@ import (
 	"time"
 
 	"github.com/ncw/swift"
+	"github.com/ncw/swift/swifttest"
 )
 
 var (
 	c                swift.Connection
+	srv              *swifttest.SwiftServer
 	m1               = swift.Metadata{"Hello": "1", "potato-Salad": "2"}
 	m2               = swift.Metadata{"hello": "", "potato-salad": ""}
 	skipVersionTests = false
 )
 
 const (
+    TEST_ADDRESS       = "localhost:6543"
+    AUTH_URL           = "http://" + TEST_ADDRESS + "/v1.0"
 	CONTAINER          = "GoSwiftUnitTest"
 	VERSIONS_CONTAINER = "GoSwiftUnitTestVersions"
 	CURRENT_CONTAINER  = "GoSwiftUnitTestCurrent"
@@ -49,11 +55,18 @@ const (
 type someTransport struct{ http.Transport }
 
 func TestTransport(t *testing.T) {
+	var err error
 	UserName := os.Getenv("SWIFT_API_USER")
 	ApiKey := os.Getenv("SWIFT_API_KEY")
 	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
 	if UserName == "" || ApiKey == "" || AuthUrl == "" {
-		t.Fatal("SWIFT_API_USER, SWIFT_API_KEY and SWIFT_AUTH_URL not all set")
+		srv, err = swifttest.NewSwiftServer(TEST_ADDRESS)
+		if err != nil {
+			t.Fatal("Failed to create server", err)
+		}
+		UserName = "swifttest"
+		ApiKey = "swifttest"
+		AuthUrl = AUTH_URL
 	}
 	tr := &someTransport{Transport: http.Transport{MaxIdleConnsPerHost: 2048}}
 	ct := swift.Connection{
@@ -66,22 +79,30 @@ func TestTransport(t *testing.T) {
 		ConnectTimeout: 60 * time.Second,
 		Timeout:        60 * time.Second,
 	}
-	err := ct.Authenticate()
+	err = ct.Authenticate()
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
 	if !ct.Authenticated() {
 		t.Fatal("Not authenticated")
 	}
+	srv.Close()
 }
 
 // The following Test functions are run in order - this one must come before the others!
 func TestAuthenticate(t *testing.T) {
+	var err error
 	UserName := os.Getenv("SWIFT_API_USER")
 	ApiKey := os.Getenv("SWIFT_API_KEY")
 	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
 	if UserName == "" || ApiKey == "" || AuthUrl == "" {
-		t.Fatal("SWIFT_API_USER, SWIFT_API_KEY and SWIFT_AUTH_URL not all set")
+		srv, err = swifttest.NewSwiftServer(TEST_ADDRESS)
+		if err != nil {
+			t.Fatal("Failed to create server", err)
+		}
+		UserName = "swifttest"
+		ApiKey = "swifttest"
+		AuthUrl = AUTH_URL
 	}
 	c = swift.Connection{
 		UserName: UserName,
@@ -90,7 +111,7 @@ func TestAuthenticate(t *testing.T) {
 		Tenant:   os.Getenv("SWIFT_TENANT"),
 		TenantId: os.Getenv("SWIFT_TENANT_ID"),
 	}
-	err := c.Authenticate()
+	err = c.Authenticate()
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
