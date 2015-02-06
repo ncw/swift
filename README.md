@@ -53,10 +53,11 @@ The `rs` sub project contains a wrapper for the Rackspace specific CDN Managemen
 Testing
 -------
 
-To run the tests you'll need access to an Openstack Swift server or a
-Rackspace Cloud files account.
+To run the tests you can either use an embedded fake Swift server
+either use a real Openstack Swift server or a Rackspace Cloud files account.
 
-Set these environment variables before running the tests
+When using a real Swift server, you need to set these environment variables
+before running the tests
 
     export SWIFT_API_USER='user'
     export SWIFT_API_KEY='key'
