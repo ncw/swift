@@ -102,3 +102,4 @@ Contributors
 - Livio Soares <liviobs@gmail.com>
 - thesyncim <thesyncim@gmail.com>
 - lsowen <lsowen@s1network.com>
+- Sylvain Baubeau <sbaubeau@redhat.com>
