@@ -433,26 +433,26 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		var authToken string
 		targetUrl, authToken, err = c.getUrlAndAuthToken(targetUrl, p.OnReAuth)
 
-		var url *url.URL
-		url, err = url.Parse(targetUrl)
+		var URL *url.URL
+		URL, err = url.Parse(targetUrl)
 		if err != nil {
 			return
 		}
 		if p.Container != "" {
-			url.Path += "/" + p.Container
+			URL.Path += "/" + p.Container
 			if p.ObjectName != "" {
-				url.Path += "/" + p.ObjectName
+				URL.Path += "/" + p.ObjectName
 			}
 		}
 		if p.Parameters != nil {
-			url.RawQuery = p.Parameters.Encode()
+			URL.RawQuery = p.Parameters.Encode()
 		}
 		timer := time.NewTimer(c.ConnectTimeout)
 		reader := p.Body
 		if reader != nil {
 			reader = newWatchdogReader(reader, c.Timeout, timer)
 		}
-		req, err = http.NewRequest(p.Operation, url.String(), reader)
+		req, err = http.NewRequest(p.Operation, URL.String(), reader)
 		if err != nil {
 			return
 		}
