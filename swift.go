@@ -1047,19 +1047,17 @@ type ObjectCreateFile struct {
 
 // Write bytes to the object - see io.Writer
 func (file *ObjectCreateFile) Write(p []byte) (n int, err error) {
-	// Check to see if write has finished already
-	select {
-	case <-file.done:
+	n, err = file.pipeWriter.Write(p)
+	if err == io.ErrClosedPipe {
 		if file.err != nil {
 			return 0, file.err
 		}
 		return 0, newError(500, "Write on closed file")
-	default:
 	}
-	if file.checkHash {
+	if err == nil && file.checkHash {
 		_, _ = file.hash.Write(p)
 	}
-	return file.pipeWriter.Write(p)
+	return
 }
 
 // Close the object and checks the md5sum if it was required.
@@ -1161,6 +1159,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 			ErrorMap:   objectErrorMap,
 		})
 		// Signal finished
+		pipeReader.Close()
 		close(file.done)
 	}()
 	return
