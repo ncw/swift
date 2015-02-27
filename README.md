@@ -103,3 +103,4 @@ Contributors
 - thesyncim <thesyncim@gmail.com>
 - lsowen <lsowen@s1network.com>
 - Sylvain Baubeau <sbaubeau@redhat.com>
+- Chris Kastorff <encryptio@gmail.com>
