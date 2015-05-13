@@ -1676,8 +1676,10 @@ func (c *Connection) Object(container string, objectName string) (info Object, h
 	// X-Object-Meta-Dairy: Bacon
 	info.Name = objectName
 	info.ContentType = resp.Header.Get("Content-Type")
-	if info.Bytes, err = getInt64FromHeader(resp, "Content-Length"); err != nil {
-		return
+	if resp.Header.Get("Content-Length") != "" {
+		if info.Bytes, err = getInt64FromHeader(resp, "Content-Length"); err != nil {
+			return
+		}
 	}
 	info.ServerLastModified = resp.Header.Get("Last-Modified")
 	if info.LastModified, err = time.Parse(http.TimeFormat, info.ServerLastModified); err != nil {
