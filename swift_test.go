@@ -39,8 +39,6 @@ var (
 )
 
 const (
-	TEST_ADDRESS       = "localhost:6543"
-	AUTH_URL           = "http://" + TEST_ADDRESS + "/v1.0"
 	CONTAINER          = "GoSwiftUnitTest"
 	VERSIONS_CONTAINER = "GoSwiftUnitTestVersions"
 	CURRENT_CONTAINER  = "GoSwiftUnitTestCurrent"
@@ -60,13 +58,13 @@ func TestTransport(t *testing.T) {
 	ApiKey := os.Getenv("SWIFT_API_KEY")
 	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
 	if UserName == "" || ApiKey == "" || AuthUrl == "" {
-		srv, err = swifttest.NewSwiftServer(TEST_ADDRESS)
+		srv, err = swifttest.NewSwiftServer("localhost")
 		if err != nil {
 			t.Fatal("Failed to create server", err)
 		}
 		UserName = "swifttest"
 		ApiKey = "swifttest"
-		AuthUrl = AUTH_URL
+		AuthUrl = srv.AuthURL
 	}
 	tr := &someTransport{Transport: http.Transport{MaxIdleConnsPerHost: 2048}}
 	ct := swift.Connection{
@@ -98,13 +96,13 @@ func TestAuthenticate(t *testing.T) {
 	ApiKey := os.Getenv("SWIFT_API_KEY")
 	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
 	if UserName == "" || ApiKey == "" || AuthUrl == "" {
-		srv, err = swifttest.NewSwiftServer(TEST_ADDRESS)
+		srv, err = swifttest.NewSwiftServer("localhost")
 		if err != nil {
 			t.Fatal("Failed to create server", err)
 		}
 		UserName = "swifttest"
 		ApiKey = "swifttest"
-		AuthUrl = AUTH_URL
+		AuthUrl = srv.AuthURL
 	}
 	c = swift.Connection{
 		UserName: UserName,

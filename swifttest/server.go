@@ -38,13 +38,14 @@ const (
 
 type SwiftServer struct {
 	t          *testing.T
-	listener   net.Listener
-	url        string
 	reqId      int
 	mu         sync.Mutex
-	containers map[string]*container
-	accounts   map[string]*account
-	sessions   map[string]*session
+	Listener   net.Listener
+	AuthURL    string
+	URL        string
+	Containers map[string]*container
+	Accounts   map[string]*account
+	Sessions   map[string]*session
 }
 
 // The Folder type represents a container stored in an account
@@ -293,7 +294,7 @@ func (r containerResource) delete(a *action) interface{} {
 	if len(b.objects) > 0 {
 		fatalf(409, "Conflict", "The container you tried to delete is not empty")
 	}
-	delete(a.srv.containers, b.name)
+	delete(a.srv.Containers, b.name)
 	a.user.Containers--
 	return nil
 }
@@ -315,7 +316,7 @@ func (r containerResource) put(a *action) interface{} {
 			},
 		}
 		r.container.setMetadata(a, "container")
-		a.srv.containers[r.name] = r.container
+		a.srv.Containers[r.name] = r.container
 		a.user.Containers++
 	}
 
@@ -429,7 +430,7 @@ func (objr objectResource) get(a *action) interface{} {
 	if manifest, ok := obj.meta["X-Object-Manifest"]; ok {
 		var segments []io.Reader
 		components := strings.SplitN(manifest[0], "/", 2)
-		segContainer := a.srv.containers[components[0]]
+		segContainer := a.srv.Containers[components[0]]
 		prefix := components[1]
 		resp := segContainer.list("", "", prefix, "")
 		sum := md5.New()
@@ -647,15 +648,15 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.URL.String() == "/v1.0" {
 		username := req.Header.Get("x-auth-user")
 		key := req.Header.Get("x-auth-key")
-		if acct, ok := s.accounts[username]; ok {
+		if acct, ok := s.Accounts[username]; ok {
 			if acct.password == key {
 				r := make([]byte, 16)
 				_, _ = rand.Read(r)
 				id := fmt.Sprintf("%X", r)
-				w.Header().Set("X-Storage-Url", s.url+"/v1/AUTH_"+username)
+				w.Header().Set("X-Storage-Url", s.URL+"/AUTH_"+username)
 				w.Header().Set("X-Auth-Token", "AUTH_tk"+string(id))
 				w.Header().Set("X-Storage-Token", "AUTH_tk"+string(id))
-				s.sessions[id] = &session{
+				s.Sessions[id] = &session{
 					username: username,
 				}
 				return
@@ -665,12 +666,12 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	key := req.Header.Get("x-auth-token")
-	session, ok := s.sessions[key[7:]]
+	session, ok := s.Sessions[key[7:]]
 	if !ok {
 		panic(notAuthorized())
 	}
 
-	a.user = s.accounts[session.username]
+	a.user = s.Accounts[session.username]
 
 	r = s.resourceForURL(req.URL)
 
@@ -726,7 +727,7 @@ func (srv *SwiftServer) resourceForURL(u *url.URL) (r resource) {
 	}
 	b := containerResource{
 		name:      containerName,
-		container: srv.containers[containerName],
+		container: srv.Containers[containerName],
 	}
 
 	if objectName == "" {
@@ -791,7 +792,7 @@ func (rootResource) get(a *action) interface{} {
 
 	var tmp orderedContainers
 	// first get all matching objects and arrange them in alphabetical order.
-	for _, container := range a.srv.containers {
+	for _, container := range a.srv.Containers {
 		if strings.HasPrefix(container.name, prefix) {
 			tmp = append(tmp, container)
 		}
@@ -837,20 +838,35 @@ func (rootResource) delete(a *action) interface{} {
 func (rootResource) copy(a *action) interface{} { return notAllowed() }
 
 func NewSwiftServer(address string) (*SwiftServer, error) {
-	l, err := net.Listen("tcp", address)
+	var (
+		l   net.Listener
+		err error
+	)
+	if strings.Index(address, ":") == -1 {
+		for port := 1024; port < 65535; port++ {
+			addr := fmt.Sprintf("%s:%d", address, port)
+			if l, err = net.Listen("tcp", addr); err == nil {
+				address = addr
+				break
+			}
+		}
+	} else {
+		l, err = net.Listen("tcp", address)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("cannot listen on %s: %v", address, err)
 	}
 
 	server := &SwiftServer{
-		listener:   l,
-		url:        "http://" + l.Addr().String(),
-		containers: make(map[string]*container),
-		accounts:   make(map[string]*account),
-		sessions:   make(map[string]*session),
+		Listener:   l,
+		AuthURL:    "http://" + l.Addr().String() + "/v1.0",
+		URL:        "http://" + l.Addr().String() + "/v1",
+		Containers: make(map[string]*container),
+		Accounts:   make(map[string]*account),
+		Sessions:   make(map[string]*session),
 	}
 
-	server.accounts["swifttest"] = &account{
+	server.Accounts["swifttest"] = &account{
 		password: "swifttest",
 		metadata: metadata{
 			meta: make(http.Header),
@@ -865,5 +881,5 @@ func NewSwiftServer(address string) (*SwiftServer, error) {
 }
 
 func (srv SwiftServer) Close() {
-	srv.listener.Close()
+	srv.Listener.Close()
 }
