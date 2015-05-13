@@ -303,7 +303,6 @@ func (r containerResource) put(a *action) interface{} {
 		fatalf(403, "Operation forbidden", "Bulk upload is not supported")
 	}
 
-	var created bool
 	if r.container == nil {
 		if !validContainerName(r.name) {
 			fatalf(400, "InvalidContainerName", "The specified container is not valid")
@@ -318,11 +317,8 @@ func (r containerResource) put(a *action) interface{} {
 		r.container.setMetadata(a, "container")
 		a.srv.containers[r.name] = r.container
 		a.user.Containers++
-		created = true
 	}
-	if !created {
-		fatalf(409, "ContainerAlreadyOwnedByYou", "Your previous request to create the named container succeeded and you already own it.")
-	}
+
 	return nil
 }
 
