@@ -559,6 +559,10 @@ func (objr objectResource) post(a *action) interface{} {
 }
 
 func (objr objectResource) copy(a *action) interface{} {
+	if objr.object == nil {
+		fatalf(404, "NoSuchKey", "The specified key does not exist.")
+	}
+
 	obj := objr.object
 	destination := a.req.Header.Get("Destination")
 	if destination == "" {
