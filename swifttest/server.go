@@ -175,31 +175,11 @@ func (m metadata) getMetadata(a *action) {
 	}
 }
 
-// GET on a bucket lists the objects in the bucket.
-func (r containerResource) get(a *action) interface{} {
-	if r.container == nil {
-		fatalf(404, "NoSuchContainer", "The specified container does not exist")
-	}
-
-	delimiter := a.req.Form.Get("delimiter")
-	marker := a.req.Form.Get("marker")
-	prefix := a.req.Form.Get("prefix")
-	format := a.req.URL.Query().Get("format")
-	parent := a.req.Form.Get("path")
-
-	a.w.Header().Set("X-Container-Bytes-Used", strconv.Itoa(r.container.bytes))
-	a.w.Header().Set("X-Container-Object-Count", strconv.Itoa(len(r.container.objects)))
-	r.container.getMetadata(a)
-
-	if a.req.Method == "HEAD" {
-		return nil
-	}
-
+func (c container) list(delimiter string, marker string, prefix string, parent string) (resp []interface{}) {
 	var tmp orderedObjects
-	var resp []interface{} = make([]interface{}, 0)
 
 	// first get all matching objects and arrange them in alphabetical order.
-	for _, obj := range r.container.objects {
+	for _, obj := range c.objects {
 		if strings.HasPrefix(obj.name, prefix) {
 			tmp = append(tmp, obj)
 		}
@@ -234,21 +214,59 @@ func (r containerResource) get(a *action) interface{} {
 
 		if isPrefix {
 			prefixes = append(prefixes, name)
+
 			resp = append(resp, Subdir{
 				Subdir: name,
 			})
 		} else {
-			if format == "json" {
-				resp = append(resp, obj.Key())
-			} else {
-				a.w.Write([]byte(obj.name + "\n"))
-			}
+			resp = append(resp, obj)
 		}
 	}
 
+	return
+}
+
+// GET on a container lists the objects in the container.
+func (r containerResource) get(a *action) interface{} {
+	if r.container == nil {
+		fatalf(404, "NoSuchContainer", "The specified container does not exist")
+	}
+
+	delimiter := a.req.Form.Get("delimiter")
+	marker := a.req.Form.Get("marker")
+	prefix := a.req.Form.Get("prefix")
+	format := a.req.URL.Query().Get("format")
+	parent := a.req.Form.Get("path")
+
+	a.w.Header().Set("X-Container-Bytes-Used", strconv.Itoa(r.container.bytes))
+	a.w.Header().Set("X-Container-Object-Count", strconv.Itoa(len(r.container.objects)))
+	r.container.getMetadata(a)
+
+	if a.req.Method == "HEAD" {
+		return nil
+	}
+
+	objects := r.container.list(delimiter, marker, prefix, parent)
+
 	if format == "json" {
+		a.w.Header().Set("Content-Type", "application/json")
+		var resp []interface{}
+		for _, item := range objects {
+			if obj, ok := item.(*object); ok {
+				resp = append(resp, obj.Key())
+			} else {
+				resp = append(resp, item)
+			}
+		}
 		return resp
 	} else {
+		for _, item := range objects {
+			if obj, ok := item.(*object); ok {
+				a.w.Write([]byte(obj.name + "\n"))
+			} else if subdir, ok := item.(Subdir); ok {
+				a.w.Write([]byte(subdir.Subdir + "\n"))
+			}
+		}
 		return nil
 	}
 }
@@ -285,7 +303,6 @@ func (r containerResource) put(a *action) interface{} {
 		fatalf(403, "Operation forbidden", "Bulk upload is not supported")
 	}
 
-	var created bool
 	if r.container == nil {
 		if !validContainerName(r.name) {
 			fatalf(400, "InvalidContainerName", "The specified container is not valid")
@@ -300,11 +317,8 @@ func (r containerResource) put(a *action) interface{} {
 		r.container.setMetadata(a, "container")
 		a.srv.containers[r.name] = r.container
 		a.user.Containers++
-		created = true
 	}
-	if !created {
-		fatalf(409, "ContainerAlreadyOwnedByYou", "Your previous request to create the named container succeeded and you already own it.")
-	}
+
 	return nil
 }
 
@@ -373,36 +387,81 @@ var metaHeaders = map[string]bool{
 	"Content-Type":        true,
 	"Content-Encoding":    true,
 	"Content-Disposition": true,
+	"X-Object-Manifest":   true,
 }
 
-var rangeRegexp = regexp.MustCompile("([0-9])*-([0-9])*")
+var rangeRegexp = regexp.MustCompile("(bytes=)?([0-9]*)-([0-9]*)")
 
 // GET on an object gets the contents of the object.
 func (objr objectResource) get(a *action) interface{} {
+	var (
+		etag   []byte
+		reader io.Reader
+		start  int
+		end    int = -1
+	)
 	obj := objr.object
 	if obj == nil {
 		fatalf(404, "Not Found", "The resource could not be found.")
 	}
+
 	h := a.w.Header()
 	// add metadata
 	obj.getMetadata(a)
 
-	var (
-		start int
-		end   int = len(obj.data)
-	)
 	if r := a.req.Header.Get("Range"); r != "" {
 		m := rangeRegexp.FindStringSubmatch(r)
-		if m[1] != "" {
-			start, _ = strconv.Atoi(m[1])
-		}
 		if m[2] != "" {
-			end, _ = strconv.Atoi(m[2])
+			start, _ = strconv.Atoi(m[2])
+		}
+		if m[3] != "" {
+			end, _ = strconv.Atoi(m[3])
 		}
 	}
 
-	h.Set("Content-Length", fmt.Sprint(len(obj.data)))
-	h.Set("ETag", hex.EncodeToString(obj.checksum))
+	max := func(a int, b int) int {
+		if a > b {
+			return a
+		}
+		return b
+	}
+
+	if manifest, ok := obj.meta["X-Object-Manifest"]; ok {
+		var segments []io.Reader
+		components := strings.SplitN(manifest[0], "/", 2)
+		segContainer := a.srv.containers[components[0]]
+		prefix := components[1]
+		resp := segContainer.list("", "", prefix, "")
+		sum := md5.New()
+		cursor := 0
+		size := 0
+		for _, item := range resp {
+			if obj, ok := item.(*object); ok {
+				length := len(obj.data)
+				size += length
+				sum.Write([]byte(components[0] + "/" + obj.name + "\n"))
+				if start >= cursor+length {
+					continue
+				}
+				segments = append(segments, bytes.NewReader(obj.data[max(0, start - cursor):]))
+				cursor += length
+			}
+		}
+		etag = sum.Sum(nil)
+		if end == -1 {
+			end = size
+		}
+		reader = io.LimitReader(io.MultiReader(segments...), int64(end - start))
+	} else {
+		if end == -1 {
+			end = len(obj.data)
+		}
+		etag = obj.checksum
+		reader = bytes.NewReader(obj.data[start:end])
+	}
+
+	h.Set("Content-Length", fmt.Sprint(end - start))
+	h.Set("ETag", hex.EncodeToString(etag))
 	h.Set("Last-Modified", obj.mtime.Format(http.TimeFormat))
 
 	if a.req.Method == "HEAD" {
@@ -410,7 +469,7 @@ func (objr objectResource) get(a *action) interface{} {
 	}
 
 	// TODO avoid holding the lock when writing data.
-	_, err := a.w.Write(obj.data[start:end])
+	_, err := io.Copy(a.w, reader)
 	if err != nil {
 		// we can't do much except just log the fact.
 		log.Printf("error writing data: %v", err)
@@ -500,6 +559,10 @@ func (objr objectResource) post(a *action) interface{} {
 }
 
 func (objr objectResource) copy(a *action) interface{} {
+	if objr.object == nil {
+		fatalf(404, "NoSuchKey", "The specified key does not exist.")
+	}
+
 	obj := objr.object
 	destination := a.req.Header.Get("Destination")
 	if destination == "" {
