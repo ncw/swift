@@ -72,7 +72,7 @@ func TestTransport(t *testing.T) {
 	ct := swift.Connection{
 		UserName:       UserName,
 		ApiKey:         ApiKey,
-		AuthUrl:        AuthUrl,
+		AuthUrl:        srv.AuthURL,
 		Tenant:         os.Getenv("SWIFT_TENANT"),
 		TenantId:       os.Getenv("SWIFT_TENANT_ID"),
 		Transport:      tr,
