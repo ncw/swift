@@ -44,10 +44,12 @@ const (
 	CURRENT_CONTAINER  = "GoSwiftUnitTestCurrent"
 	OBJECT             = "test_object"
 	OBJECT2            = "test_object2"
+	EMPTYOBJECT        = "empty_test_object"
 	CONTENTS           = "12345"
 	CONTENTS2          = "54321"
 	CONTENT_SIZE       = int64(len(CONTENTS))
 	CONTENT_MD5        = "827ccb0eea8a706c4c34a16891f84e7b"
+	EMPTY_MD5          = "d41d8cd98f00b204e9800998ecf8427e"
 )
 
 type someTransport struct{ http.Transport }
@@ -410,6 +412,33 @@ func TestObjectPutString(t *testing.T) {
 	}
 	if info.Hash != CONTENT_MD5 {
 		t.Error("Bad length")
+	}
+}
+
+func TestObjectEmpty(t *testing.T) {
+	err := c.ObjectPutString(CONTAINER, EMPTYOBJECT, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, _, err := c.Object(CONTAINER, EMPTYOBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if info.ContentType != "application/octet-stream" {
+		t.Error("Bad content type", info.ContentType)
+	}
+	if info.Bytes != 0 {
+		t.Errorf("Bad length want 0 got %v", info.Bytes)
+	}
+	if info.Hash != EMPTY_MD5 {
+		t.Errorf("Bad MD5 want %v got %v", EMPTY_MD5, info.Hash)
+	}
+
+	// Tidy up
+	err = c.ObjectDelete(CONTAINER, EMPTYOBJECT)
+	if err != nil {
+		t.Error(err)
 	}
 }
 
