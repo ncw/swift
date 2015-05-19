@@ -465,6 +465,10 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		req.Header.Add("X-Auth-Token", authToken)
 		resp, err = c.doTimeoutRequest(timer, req)
 		if err != nil {
+			if p.Operation == "HEAD" || p.Operation == "GET" {
+				retries--;
+				continue
+			}
 			return
 		}
 		// Check to see if token has expired
