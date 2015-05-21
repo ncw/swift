@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -192,15 +191,12 @@ func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error 
 
 // readHeaders returns a Headers object from the http.Response.
 //
-// Logs a warning if receives multiple values for a key (which
-// should never happen)
+// If it receives multiple values for a key (which should never
+// happen) it will use the first one
 func readHeaders(resp *http.Response) Headers {
 	headers := Headers{}
 	for key, values := range resp.Header {
 		headers[key] = values[0]
-		if len(values) > 1 {
-			log.Printf("swift: received multiple values for header %q", key)
-		}
 	}
 	return headers
 }
@@ -466,7 +462,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		resp, err = c.doTimeoutRequest(timer, req)
 		if err != nil {
 			if p.Operation == "HEAD" || p.Operation == "GET" {
-				retries--;
+				retries--
 				continue
 			}
 			return
