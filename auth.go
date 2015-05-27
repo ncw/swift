@@ -29,7 +29,9 @@ type Authenticator interface {
 func newAuth(c *Connection) (Authenticator, error) {
 	AuthVersion := c.AuthVersion
 	if AuthVersion == 0 {
-		if strings.Contains(c.AuthUrl, "v2") {
+		if strings.Contains(c.AuthUrl, "v3") {
+			AuthVersion = 3
+		} else if strings.Contains(c.AuthUrl, "v2") {
 			AuthVersion = 2
 		} else if strings.Contains(c.AuthUrl, "v1") {
 			AuthVersion = 1
@@ -46,6 +48,9 @@ func newAuth(c *Connection) (Authenticator, error) {
 			// password it will try both eventually so
 			// this is just an optimization.
 			useApiKey: len(c.ApiKey) >= 32,
+		}, nil
+	case 3:
+		return &v3Auth {
 		}, nil
 	}
 	return nil, newErrorf(500, "Auth Version %d not supported", AuthVersion)
@@ -276,4 +281,39 @@ type v2AuthResponse struct {
 			}
 		}
 	}
+}
+
+// ------------------------------------------------------------
+
+// V3 Authentication request
+//
+// http://docs.openstack.org/developer/keystone/api_curl_examples.html
+// http://developer.openstack.org/api-ref-identity-v3.html
+type v3AuthRequest struct {
+	Auth struct {
+		Identity struct {
+			Methods []string
+			Password struct {
+				User struct {
+					Domain struct {
+						Name string `json:"name"`
+						Id string `json:"id"`
+					}
+					Name string `json:"name"`
+					Password string `json:"password"`
+				} `json:"user"`
+			} `json:"password"`
+		} `json:"identity"`
+	}  `json:"auth"`
+}
+
+
+// V3 Authentication response
+type v3AuthResponse struct {
+
+}
+
+
+type v3Auth struct {
+	Auth v3AuthResponse
 }
