@@ -65,49 +65,12 @@ type v3AuthPassword struct {
 // V3 Authentication response
 type v3AuthResponse struct {
 	Token struct {
-<<<<<<< HEAD
-		Expires_At string
-		Issued_At string
-=======
 		Expires_At, Issued_At string
->>>>>>> 703523b... add v3 support
 		Methods []string
 		Roles []map[string]string
 
 		Project struct {
 			Domain struct {
-<<<<<<< HEAD
-				Id string
-				Name string
-			}
-			Id string
-			Name string
-		}
-
-		Catalog []struct {
-			Endpoints []struct {
-				Region_Id string
-				Url string
-				Region string
-				Interface string
-				Id string
-			}
-			Type string
-			Id string
-			Name string
-		}
-
-		User struct {
-			Domain struct {
-				Id string
-				Links struct {
-					Self string
-				}
-				Name string
-			}
-			Id string
-			Name string
-=======
 				Id, Name string
 			}
 			Id, Name string
@@ -128,7 +91,6 @@ type v3AuthResponse struct {
 					Self string
 				}
 			}
->>>>>>> 703523b... add v3 support
 		}
 
 		Audit_Ids []string
@@ -148,17 +110,6 @@ func (auth *v3Auth) Request(c *Connection) (*http.Request, error){
 
 	if c.UserName == "" {
 		v3.Auth.Identity.Methods = []string { AUTH_METHOD_TOKEN }
-<<<<<<< HEAD
-    v3.Auth.Identity.Token = new (v3AuthToken)
-    v3.Auth.Identity.Token.Id = c.ApiKey
-	} else {
-    v3.Auth.Identity.Methods = []string { AUTH_METHOD_PASSWORD }
-    v3.Auth.Identity.Password = new(v3AuthPassword)
-    v3.Auth.Identity.Password.User = v3User {
-      Name : c.UserName,
-      Password : c.ApiKey,
-    }
-=======
     v3.Auth.Identity.Token = &v3AuthToken { Id: c.ApiKey }
 	} else {
     v3.Auth.Identity.Methods = []string { AUTH_METHOD_PASSWORD }
@@ -169,7 +120,6 @@ func (auth *v3Auth) Request(c *Connection) (*http.Request, error){
       },
     }
 
->>>>>>> 703523b... add v3 support
     var domain *v3Domain
 
     if c.Domain != "" {
@@ -181,15 +131,6 @@ func (auth *v3Auth) Request(c *Connection) (*http.Request, error){
 	}
 
   if c.TenantId != "" || c.Tenant != "" {
-<<<<<<< HEAD
-  	v3.Auth.Scope = new(v3Scope)
-    v3.Auth.Scope.Project = new(v3Project)
-  	if c.TenantId != "" {
-      v3.Auth.Scope.Project.Id = c.TenantId
-    }
-    if c.Tenant != "" {
-      v3.Auth.Scope.Project.Name = c.Tenant
-=======
 
   	v3.Auth.Scope = &v3Scope{ Project: &v3Project{} }
 
@@ -204,15 +145,11 @@ func (auth *v3Auth) Request(c *Connection) (*http.Request, error){
         defaultDomain = v3Domain{ Id: "Default" }
       }
       v3.Auth.Scope.Project.Domain = &defaultDomain
->>>>>>> 703523b... add v3 support
     }
   }
 
 	v3i = v3
-<<<<<<< HEAD
-=======
 
->>>>>>> 703523b... add v3 support
 	body, err := json.Marshal(v3i)
 	if err != nil {
 		return nil, err
@@ -232,11 +169,7 @@ func (auth *v3Auth) Request(c *Connection) (*http.Request, error){
 }
 
 func (auth *v3Auth) Response(resp *http.Response) error{
-<<<<<<< HEAD
-	auth.Auth = new(v3AuthResponse)
-=======
 	auth.Auth = &v3AuthResponse{}
->>>>>>> 703523b... add v3 support
 	auth.Headers = resp.Header
 	err := readJson(resp, auth.Auth)
 	return err
