@@ -1,7 +1,6 @@
 package swift
 
 import (
-	"fmt"
 	"bytes"
 	"encoding/json"
 	"net/http"
