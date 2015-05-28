@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"hash"
@@ -80,6 +81,8 @@ const (
 type Connection struct {
 	// Parameters - fill these in before calling Authenticate
 	// They are all optional except UserName, ApiKey and AuthUrl
+	Domain		 		 string 					 // User's domain name
+	DomainId			 string						 // User's domain Id
 	UserName       string            // UserName for api
 	ApiKey         string            // Key for api access
 	AuthUrl        string            // Auth URL
@@ -239,10 +242,10 @@ func (c *Connection) setDefaults() {
 		c.Retries = DefaultRetries
 	}
 	if c.ConnectTimeout == 0 {
-		c.ConnectTimeout = 10 * time.Second
+		c.ConnectTimeout = 60 * time.Second
 	}
 	if c.Timeout == 0 {
-		c.Timeout = 60 * time.Second
+		c.Timeout = 600 * time.Second
 	}
 	if c.Transport == nil {
 		c.Transport = &http.Transport{
@@ -250,6 +253,7 @@ func (c *Connection) setDefaults() {
 			//		DisableCompression: true,
 			Proxy:               http.ProxyFromEnvironment,
 			MaxIdleConnsPerHost: 2048,
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
 	}
 	if c.client == nil {
@@ -297,6 +301,7 @@ again:
 	timer := time.NewTimer(c.ConnectTimeout)
 	var resp *http.Response
 	resp, err = c.doTimeoutRequest(timer, req)
+
 	if err != nil {
 		return
 	}
@@ -320,8 +325,10 @@ again:
 	if err != nil {
 		return
 	}
+
 	c.StorageUrl = c.Auth.StorageUrl(c.Internal)
 	c.AuthToken = c.Auth.Token()
+
 	if !c.authenticated() {
 		err = newError(0, "Response didn't have storage url and auth token")
 		return
