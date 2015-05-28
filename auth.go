@@ -1,11 +1,13 @@
 package swift
 
 import (
+	"fmt"
 	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
+
 )
 
 // Auth defines the operations needed to authenticate with swift
@@ -292,28 +294,149 @@ type v2AuthResponse struct {
 type v3AuthRequest struct {
 	Auth struct {
 		Identity struct {
-			Methods []string
+			Methods []string `json:"methods"`
 			Password struct {
 				User struct {
 					Domain struct {
-						Name string `json:"name"`
-						Id string `json:"id"`
-					}
+						Name string `json:"name,omitempty"`
+						Id string `json:"id,omitempty"`
+					} `json:"domain,omitempty"`
 					Name string `json:"name"`
 					Password string `json:"password"`
 				} `json:"user"`
 			} `json:"password"`
 		} `json:"identity"`
+		Scope *v3AuthRequestScope `json:"scope,omitempty"`
 	}  `json:"auth"`
 }
 
+type v3AuthRequestScope struct {
+	Project struct {
+		Id string `json:"id,omitempty"`
+	} `json:"project"`
+}
 
 // V3 Authentication response
 type v3AuthResponse struct {
+	Token struct {
+		Expires_At string
+		Issued_At string
+		Methods []string
+		Roles []map[string]string
 
+		Project struct {
+			Domain struct {
+				Id string
+				Name string
+			}
+			Id string
+			Name string
+		}
+
+		Catalog []struct {
+			Endpoints []struct {
+				Region_Id string
+				Url string
+				Region string
+				Interface string
+				Id string
+			}
+			Type string
+			Id string
+			Name string
+		}
+
+		User struct {
+			Domain struct {
+				Id string
+				Links struct {
+					Self string
+				}
+				Name string
+			}
+			Id string
+			Name string
+		}
+
+		Audit_Ids []string
+	}
+}
+
+type v3Auth struct {
+	Auth *v3AuthResponse
+	Headers http.Header
+}
+
+func (auth *v3Auth) Request(c *Connection) (*http.Request, error){
+
+	var v3i interface{}
+
+	v3 := v3AuthRequest{}
+	v3.Auth.Identity.Methods = []string{"password"}
+	v3.Auth.Identity.Password.User.Name = c.UserName
+
+	v3.Auth.Identity.Password.User.Password = c.ApiKey
+	v3.Auth.Identity.Password.User.Domain.Name = c.Domain
+
+	v3.Auth.Scope = new(v3AuthRequestScope)
+
+	v3.Auth.Scope.Project.Id = c.TenantId
+
+
+	v3i = v3
+	body, err := json.Marshal(v3i)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("%s", body)
+	url := c.AuthUrl
+	if !strings.HasSuffix(url, "/") {
+		url += "/"
+	}
+	url += "tokens"
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
+func (auth *v3Auth) Response(resp *http.Response) error{
+	auth.Auth = new(v3AuthResponse)
+	auth.Headers = resp.Header
+	err := readJson(resp, auth.Auth)
+	return err
+}
+
+func (auth *v3Auth) endpointUrl(Type string, Internal bool) string {
+	for _, catalog := range auth.Auth.Token.Catalog {
+		if catalog.Type == Type {
+			for _, endpoint := range catalog.Endpoints {
+				if Internal {
+					if endpoint.Interface == "internal" {
+						return endpoint.Url
+					}
+				} else {
+					if endpoint.Interface == "public" {
+						return endpoint.Url
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 
-type v3Auth struct {
-	Auth v3AuthResponse
+func (auth *v3Auth) StorageUrl(Internal bool) string {
+	return auth.endpointUrl("object-store", Internal)
+}
+
+func (auth *v3Auth) Token() string  {
+	return auth.Headers.Get("X-Subject-Token")
+}
+
+func (auth *v3Auth) CdnUrl() string {
+	return ""
 }

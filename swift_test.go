@@ -18,14 +18,13 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"encoding/xml"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"sync"
 	"testing"
 	"time"
-
+	"fmt"
 	"github.com/ncw/swift"
 	"github.com/ncw/swift/swifttest"
 )
@@ -54,10 +53,11 @@ const (
 
 type someTransport struct{ http.Transport }
 
-func TestTransport(t *testing.T) {
+/*func TestTransport(t *testing.T) {
 	var err error
 	UserName := os.Getenv("SWIFT_API_USER")
 	ApiKey := os.Getenv("SWIFT_API_KEY")
+	Domain := os.Getenv("SWIFT_API_DOMAIN")
 	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
 	if UserName == "" || ApiKey == "" || AuthUrl == "" {
 		srv, err = swifttest.NewSwiftServer("localhost")
@@ -70,6 +70,7 @@ func TestTransport(t *testing.T) {
 	}
 	tr := &someTransport{Transport: http.Transport{MaxIdleConnsPerHost: 2048}}
 	ct := swift.Connection{
+		Domain:					Domain,
 		UserName:       UserName,
 		ApiKey:         ApiKey,
 		AuthUrl:        AuthUrl,
@@ -89,12 +90,13 @@ func TestTransport(t *testing.T) {
 	if srv != nil {
 		srv.Close()
 	}
-}
+}*/
 
 // The following Test functions are run in order - this one must come before the others!
 func TestAuthenticate(t *testing.T) {
 	var err error
 	UserName := os.Getenv("SWIFT_API_USER")
+	Domain := os.Getenv("SWIFT_API_DOMAIN")
 	ApiKey := os.Getenv("SWIFT_API_KEY")
 	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
 	if UserName == "" || ApiKey == "" || AuthUrl == "" {
@@ -108,6 +110,7 @@ func TestAuthenticate(t *testing.T) {
 	}
 	c = swift.Connection{
 		UserName: UserName,
+		Domain: 	Domain,
 		ApiKey:   ApiKey,
 		AuthUrl:  AuthUrl,
 		Tenant:   os.Getenv("SWIFT_TENANT"),
@@ -142,6 +145,7 @@ func TestAuthenticateRace(t *testing.T) {
 	}
 	wg.Wait()
 }
+
 
 // Test a connection can be serialized and unserialized with JSON
 func TestSerializeConnectionJson(t *testing.T) {
