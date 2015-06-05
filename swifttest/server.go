@@ -519,7 +519,7 @@ func (objr objectResource) put(a *action) interface{} {
 
 	var content_type string
 	if content_type = a.req.Header.Get("Content-Type"); content_type == "" {
-		content_type := mime.TypeByExtension(obj.name)
+		content_type = mime.TypeByExtension(obj.name)
 		if content_type == "" {
 			content_type = "application/octet-stream"
 		}
@@ -880,6 +880,6 @@ func NewSwiftServer(address string) (*SwiftServer, error) {
 	return server, nil
 }
 
-func (srv SwiftServer) Close() {
+func (srv *SwiftServer) Close() {
 	srv.Listener.Close()
 }
