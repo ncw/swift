@@ -1422,8 +1422,10 @@ func (c *Connection) ObjectOpen(container string, objectName string, checkHash b
 		file.body = io.TeeReader(resp.Body, file.hash)
 	}
 	// Read Content-Length
-	file.length, err = getInt64FromHeader(resp, "Content-Length")
-	file.lengthOk = (err == nil)
+	if resp.Header.Get("Content-Length") != "" {
+		file.length, err = getInt64FromHeader(resp, "Content-Length")
+		file.lengthOk = (err == nil)
+	}
 	return
 }
 
