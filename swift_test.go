@@ -20,9 +20,8 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"github.com/ncw/swift"
-	"github.com/ncw/swift/swifttest"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -30,6 +29,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ncw/swift"
+	"github.com/ncw/swift/swifttest"
 )
 
 var (
@@ -52,6 +54,7 @@ const (
 	CONTENT_SIZE       = int64(len(CONTENTS))
 	CONTENT_MD5        = "827ccb0eea8a706c4c34a16891f84e7b"
 	EMPTY_MD5          = "d41d8cd98f00b204e9800998ecf8427e"
+	SECRET_KEY         = "b3968d0207b54ece87cccc06515a89d4"
 )
 
 type someTransport struct{ http.Transport }
@@ -1439,6 +1442,43 @@ func TestObjectDifficultName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestTempUrl(t *testing.T) {
+	err := c.ObjectPutBytes(CONTAINER, OBJECT, []byte(CONTENTS), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m := swift.Metadata{}
+	m["temp-url-key"] = SECRET_KEY
+	err = c.AccountUpdate(m.AccountHeaders())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expiresTime := time.Now().Add(20 * time.Minute)
+	tempUrl := c.ObjectTempUrl(CONTAINER, OBJECT, SECRET_KEY, "GET", expiresTime)
+	resp, err := http.Get(tempUrl)
+	if err != nil {
+		t.Fatal("Failed to retrieve file from temporary url")
+	}
+	if resp.StatusCode == 401 {
+		t.Log("Server doesn't support tempurl")
+	} else if resp.StatusCode != 200 {
+		t.Fatal("HTTP Error retrieving file from temporary url", resp.StatusCode)
+	} else {
+		if content, err := ioutil.ReadAll(resp.Body); err != nil || string(content) != CONTENTS {
+			t.Error("Bad content", err)
+		}
+	}
+
+	resp.Body.Close()
+	err = c.ObjectDelete(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 func TestContainerDelete(t *testing.T) {

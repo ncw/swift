@@ -3,7 +3,10 @@ package swift
 import (
 	"bufio"
 	"bytes"
+	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash"
@@ -1479,6 +1482,16 @@ func (c *Connection) ObjectDelete(container string, objectName string) error {
 		ErrorMap:   objectErrorMap,
 	})
 	return err
+}
+
+// ObjectTempUrl returns a temporary URL for an object
+func (c *Connection) ObjectTempUrl(container string, objectName string, secretKey string, method string, expires time.Time) string {
+	mac := hmac.New(sha1.New, []byte(secretKey))
+	prefix, _ := url.Parse(c.StorageUrl)
+	body := fmt.Sprintf("%s\n%d\n%s/%s/%s", method, expires.Unix(), prefix.Path, container, objectName)
+	mac.Write([]byte(body))
+	sig := hex.EncodeToString(mac.Sum(nil))
+	return fmt.Sprintf("%s/%s/%s?temp_url_sig=%s&temp_url_expires=%d", c.StorageUrl, container, objectName, sig, expires.Unix())
 }
 
 // parseResponseStatus parses string like "200 OK" and returns Error.
