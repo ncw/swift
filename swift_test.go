@@ -1500,7 +1500,17 @@ func TestTempUrl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
 
+func TestQueryInfo(t *testing.T) {
+	infos, err := c.QueryInfo()
+	if err != nil {
+		t.Log("Server doesn't support querying info")
+		return
+	}
+	if _, ok := infos["swift"]; !ok {
+		t.Fatal("No 'swift' section found in configuration")
+	}
 }
 
 func TestContainerDelete(t *testing.T) {
