@@ -392,6 +392,26 @@ func (c *Connection) authenticated() bool {
 	return c.StorageUrl != "" && c.AuthToken != ""
 }
 
+// SwiftInfo contains the JSON object returned by Swift when the /info
+// route is queried. The object contains, among others, the Swift version,
+// the enabled middlewares and their configuration
+type SwiftInfo map[string]interface{}
+
+// Discover Swift configuration by doing a request against /info
+func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
+	infoUrl, err := url.Parse(c.StorageUrl)
+	if err != nil {
+		return nil, err
+	}
+	infoUrl.Path = path.Join(infoUrl.Path, "..", "..", "info")
+	resp, err := http.Get(infoUrl.String())
+	if err == nil {
+		err = readJson(resp, &infos)
+		return infos, err
+	}
+	return nil, err
+}
+
 // RequestOpts contains parameters for Connection.storage.
 type RequestOpts struct {
 	Container  string
