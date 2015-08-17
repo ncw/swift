@@ -159,7 +159,7 @@ func (auth *v3Auth) Request(c *Connection) (*http.Request, error) {
 	if !strings.HasSuffix(url, "/") {
 		url += "/"
 	}
-	url += "tokens"
+	url += "auth/tokens"
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
