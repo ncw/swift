@@ -226,6 +226,7 @@ func TestV3TrustWithTrustId(t *testing.T) {
         }
         
         c.TrustId = os.Getenv("SWIFT_TRUST_ID")
+        c.Domain = os.Getenv("SWIFT_API_DOMAIN")
         
         err = c.Authenticate()
         if err != nil {
