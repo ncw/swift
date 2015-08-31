@@ -214,6 +214,29 @@ func TestV3AuthenticateWithDomainNameAndTenantId(t *testing.T) {
 	}
 }
 
+func TestV3TrustWithTrustId(t *testing.T) {
+        var err error
+        if !isV3Api() {
+                return 
+        }
+    
+        c, err = makeConnection()
+        if err != nil {
+                t.Fatal("Failed to create server", err)
+        }
+        
+        c.TrustId = os.Getenv("SWIFT_TRUST_ID")
+        c.Domain = os.Getenv("SWIFT_API_DOMAIN")
+        
+        err = c.Authenticate()
+        if err != nil {
+                t.Fatal("Auth failed", err)
+        }
+        if !c.Authenticated() {
+                t.Fatal("Not authenticated")
+        }
+}
+
 func TestV3AuthenticateWithDomainIdAndTenantId(t *testing.T) {
 	var err error
 
