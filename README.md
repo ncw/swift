@@ -130,3 +130,4 @@ Contributors
 - Sylvain Baubeau <sbaubeau@redhat.com>
 - Chris Kastorff <encryptio@gmail.com>
 - Dai HaoJun <haojun.dai@hp.com>
+- Hua Wang <wanghua.humble@gmail.com>
