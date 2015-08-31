@@ -40,14 +40,14 @@ const (
 )
 
 type SwiftServer struct {
-	t          *testing.T
-	reqId      int
-	mu         sync.Mutex
-	Listener   net.Listener
-	AuthURL    string
-	URL        string
-	Accounts   map[string]*account
-	Sessions   map[string]*session
+	t        *testing.T
+	reqId    int
+	mu       sync.Mutex
+	Listener net.Listener
+	AuthURL  string
+	URL      string
+	Accounts map[string]*account
+	Sessions map[string]*session
 }
 
 // The Folder type represents a container stored in an account
@@ -896,11 +896,11 @@ func NewSwiftServer(address string) (*SwiftServer, error) {
 	}
 
 	server := &SwiftServer{
-		Listener:   l,
-		AuthURL:    "http://" + l.Addr().String() + "/v1.0",
-		URL:        "http://" + l.Addr().String() + "/v1",
-		Accounts:   make(map[string]*account),
-		Sessions:   make(map[string]*session),
+		Listener: l,
+		AuthURL:  "http://" + l.Addr().String() + "/v1.0",
+		URL:      "http://" + l.Addr().String() + "/v1",
+		Accounts: make(map[string]*account),
+		Sessions: make(map[string]*session),
 	}
 
 	server.Accounts[TEST_ACCOUNT] = &account{
