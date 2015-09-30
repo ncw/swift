@@ -463,7 +463,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 				req.Header.Add(k, v)
 			}
 		}
-		req.Header.Add("User-Agent", DefaultUserAgent)
+		req.Header.Add("User-Agent", c.UserAgent)
 		req.Header.Add("X-Auth-Token", authToken)
 		resp, err = c.doTimeoutRequest(timer, req)
 		if err != nil {
