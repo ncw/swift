@@ -433,8 +433,9 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 	var req *http.Request
 	for {
 		var authToken string
-		targetUrl, authToken, err = c.getUrlAndAuthToken(targetUrl, p.OnReAuth)
-
+		if targetUrl, authToken, err = c.getUrlAndAuthToken(targetUrl, p.OnReAuth); err != nil {
+			return //authentication failure
+		}
 		var URL *url.URL
 		URL, err = url.Parse(targetUrl)
 		if err != nil {
