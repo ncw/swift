@@ -471,7 +471,6 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 				retries--
 				continue
 			}
-			_ = resp.Body.Close()
 			return nil, nil, err
 		}
 		// Check to see if token has expired
