@@ -65,6 +65,7 @@ func makeConnection() (*swift.Connection, error) {
 	UserName := os.Getenv("SWIFT_API_USER")
 	ApiKey := os.Getenv("SWIFT_API_KEY")
 	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
+	Region := os.Getenv("SWIFT_REGION_NAME")
 
 	Insecure := os.Getenv("SWIFT_AUTH_INSECURE")
 	ConnectionChannelTimeout := os.Getenv("SWIFT_CONNECTION_CHANNEL_TIMEOUT")
@@ -96,6 +97,7 @@ func makeConnection() (*swift.Connection, error) {
 		UserName:       UserName,
 		ApiKey:         ApiKey,
 		AuthUrl:        AuthUrl,
+		Region:         Region,
 		Transport:      transport,
 		ConnectTimeout: 60 * time.Second,
 		Timeout:        60 * time.Second,
