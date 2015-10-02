@@ -668,6 +668,18 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 		panic(notAuthorized())
 	}
 
+	if req.URL.String() == "/info" {
+		jsonMarshal(w, &swift.SwiftInfo{
+			"swift": map[string]interface{}{
+				"version": "1.2",
+			},
+			"tempurl": map[string]interface{}{
+				"methods": []string{"GET", "HEAD", "PUT"},
+			},
+		})
+		return
+	}
+
 	r = s.resourceForURL(req.URL)
 
 	key := req.Header.Get("x-auth-token")
