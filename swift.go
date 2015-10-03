@@ -418,6 +418,10 @@ type RequestOpts struct {
 // resp.Body.Close() must be called on it, unless noResponse is set in
 // which case the body will be closed in this function
 //
+// If "Content-Length" is set in p.Headers it will be used - this can
+// be used to override the default chunked transfer encoding for
+// uploads.
+//
 // This will Authenticate if necessary, and re-authenticate if it
 // receives a 401 error which means the token has expired
 //
@@ -461,7 +465,16 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		}
 		if p.Headers != nil {
 			for k, v := range p.Headers {
-				req.Header.Add(k, v)
+				// Set ContentLength in req if the user passed it in in the headers
+				if k == "Content-Length" {
+					contentLength, err := strconv.ParseInt(v, 10, 64)
+					if err != nil {
+						return nil, nil, fmt.Errorf("Invalid %q header %q: %v", k, v, err)
+					}
+					req.ContentLength = contentLength
+				} else {
+					req.Header.Add(k, v)
+				}
 			}
 		}
 		req.Header.Add("User-Agent", c.UserAgent)

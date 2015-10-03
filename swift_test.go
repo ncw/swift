@@ -601,6 +601,45 @@ func TestObjectPutString(t *testing.T) {
 	}
 }
 
+func TestObjectPut(t *testing.T) {
+	headers := swift.Headers{}
+
+	// Set content size incorrectly - should produce an error
+	headers["Content-Length"] = strconv.FormatInt(CONTENT_SIZE-1, 10)
+	contents := bytes.NewBufferString(CONTENTS)
+	h, err := c.ObjectPut(CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
+	if err == nil {
+		t.Fatal("Expecting error but didn't get one")
+	}
+
+	// Now set content size correctly
+	contents = bytes.NewBufferString(CONTENTS)
+	headers["Content-Length"] = strconv.FormatInt(CONTENT_SIZE, 10)
+	h, err = c.ObjectPut(CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if h["Etag"] != CONTENT_MD5 {
+		t.Errorf("Bad Etag want %q got %q", CONTENT_MD5, h["Etag"])
+	}
+
+	// Fetch object info and compare
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if info.ContentType != "text/plain" {
+		t.Error("Bad content type", info.ContentType)
+	}
+	if info.Bytes != CONTENT_SIZE {
+		t.Error("Bad length")
+	}
+	if info.Hash != CONTENT_MD5 {
+		t.Error("Bad length")
+	}
+}
+
 func TestObjectEmpty(t *testing.T) {
 	err := c.ObjectPutString(CONTAINER, EMPTYOBJECT, "", "")
 	if err != nil {
