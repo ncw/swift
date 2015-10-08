@@ -580,6 +580,7 @@ func readJson(resp *http.Response, result interface{}) (err error) {
 // ContainersOpts is options for Containers() and ContainerNames()
 type ContainersOpts struct {
 	Limit     int     // For an integer value n, limits the number of results to at most n values.
+	Prefix    string  // Given a string value x, return container names matching the specified prefix.
 	Marker    string  // Given a string value x, return object names greater in value than the specified marker.
 	EndMarker string  // Given a string value x, return container names less in value than the specified marker.
 	Headers   Headers // Any additional HTTP headers - can be nil
@@ -592,6 +593,9 @@ func (opts *ContainersOpts) parse() (url.Values, Headers) {
 	if opts != nil {
 		if opts.Limit > 0 {
 			v.Set("limit", strconv.Itoa(opts.Limit))
+		}
+		if opts.Prefix != "" {
+			v.Set("prefix", opts.Prefix)
 		}
 		if opts.Marker != "" {
 			v.Set("marker", opts.Marker)
