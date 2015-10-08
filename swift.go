@@ -581,7 +581,7 @@ func readJson(resp *http.Response, result interface{}) (err error) {
 type ContainersOpts struct {
 	Limit     int     // For an integer value n, limits the number of results to at most n values.
 	Prefix    string  // Given a string value x, return container names matching the specified prefix.
-	Marker    string  // Given a string value x, return object names greater in value than the specified marker.
+	Marker    string  // Given a string value x, return container names greater in value than the specified marker.
 	EndMarker string  // Given a string value x, return container names less in value than the specified marker.
 	Headers   Headers // Any additional HTTP headers - can be nil
 }
