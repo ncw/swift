@@ -133,3 +133,4 @@ Contributors
 - Hua Wang <wanghua.humble@gmail.com>
 - Fabian Ruff <fabian@progra.de>
 - Arturo Reuschenbach Puncernau <reuschenbach@gmail.com>
+- Petr Kotek <petr.kotek@bigcommerce.com>
