@@ -1534,6 +1534,14 @@ func TestTempUrl(t *testing.T) {
 		if content, err := ioutil.ReadAll(resp.Body); err != nil || string(content) != CONTENTS {
 			t.Error("Bad content", err)
 		}
+
+		resp, err := http.Post(tempUrl, "image/jpeg", bytes.NewReader([]byte(CONTENTS)))
+		if err != nil {
+			t.Fatal("Failed to retrieve file from temporary url")
+		}
+		if resp.StatusCode != 401 {
+			t.Fatal("Expecting server to forbid access to object")
+		}
 	}
 
 	resp.Body.Close()
