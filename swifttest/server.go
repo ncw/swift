@@ -443,7 +443,7 @@ func (objr objectResource) get(a *action) interface{} {
 			if obj, ok := item.(*object); ok {
 				length := len(obj.data)
 				size += length
-				sum.Write([]byte(components[0] + "/" + obj.name + "\n"))
+				sum.Write([]byte(hex.EncodeToString(obj.checksum)))
 				if start >= cursor+length {
 					continue
 				}
