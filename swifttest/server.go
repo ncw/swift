@@ -683,21 +683,27 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	r = s.resourceForURL(req.URL)
 
 	key := req.Header.Get("x-auth-token")
-	if key == "" {
-		secretKey := ""
-		signature := req.URL.Query().Get("temp_url_sig")
-		expires := req.URL.Query().Get("temp_url_expires")
+	signature := req.URL.Query().Get("temp_url_sig")
+	expires := req.URL.Query().Get("temp_url_expires")
+	if key == "" && signature != "" && expires != "" {
 		accountName, _, _, _ := s.parseURL(req.URL)
+		secretKey := ""
 		if account, ok := s.Accounts[accountName]; ok {
 			secretKey = account.meta.Get("X-Account-Meta-Temp-Url-Key")
 		}
 
-		mac := hmac.New(sha1.New, []byte(secretKey))
-		body := fmt.Sprintf("%s\n%s\n%s", req.Method, expires, req.URL.Path)
-		mac.Write([]byte(body))
-		expectedSignature := hex.EncodeToString(mac.Sum(nil))
+		get_hmac := func(method string) string {
+			mac := hmac.New(sha1.New, []byte(secretKey))
+			body := fmt.Sprintf("%s\n%s\n%s", method, expires, req.URL.Path)
+			mac.Write([]byte(body))
+			return hex.EncodeToString(mac.Sum(nil))
+		}
 
-		if signature != expectedSignature {
+		if req.Method == "HEAD" {
+			if signature != get_hmac("GET") && signature != get_hmac("POST") && signature != get_hmac("PUT") {
+				panic(notAuthorized())
+			}
+		} else if signature != get_hmac(req.Method) {
 			panic(notAuthorized())
 		}
 	} else {
