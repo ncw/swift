@@ -92,11 +92,11 @@ type Connection struct {
 	UserAgent      string            // Http User agent (default goswift/1.0)
 	ConnectTimeout time.Duration     // Connect channel timeout (default 10s)
 	Timeout        time.Duration     // Data channel timeout (default 60s)
-	Region         string            // Region to use eg "LON", "ORD" - default is use first region (V2 auth only)
-	AuthVersion    int               // Set to 1 or 2 or leave at 0 for autodetect
+	Region         string            // Region to use eg "LON", "ORD" - default is use first region (v2,v3 auth only)
+	AuthVersion    int               // Set to 1, 2 or 3 or leave at 0 for autodetect
 	Internal       bool              // Set this to true to use the the internal / service network
-	Tenant         string            // Name of the tenant (v2 auth only)
-	TenantId       string            // Id of the tenant (v2 auth only)
+	Tenant         string            // Name of the tenant (v2,v3 auth only)
+	TenantId       string            // Id of the tenant (v2,v3 auth only)
 	TrustId        string            // Id of the trust (v3 auth only)
 	Transport      http.RoundTripper `json:"-" xml:"-"` // Optional specialised http.Transport (eg. for Google Appengine)
 	// These are filled in after Authenticate is called as are the defaults for above
