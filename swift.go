@@ -300,31 +300,33 @@ again:
 	if err != nil {
 		return
 	}
-	timer := time.NewTimer(c.ConnectTimeout)
-	var resp *http.Response
-	resp, err = c.doTimeoutRequest(timer, req)
-	if err != nil {
-		return
-	}
-	defer func() {
-		checkClose(resp.Body, &err)
-		// Flush the auth connection - we don't want to keep
-		// it open if keepalives were enabled
-		flushKeepaliveConnections(c.Transport)
-	}()
-	if err = c.parseHeaders(resp, authErrorMap); err != nil {
-		// Try again for a limited number of times on
-		// AuthorizationFailed or BadRequest. This allows us
-		// to try some alternate forms of the request
-		if (err == AuthorizationFailed || err == BadRequest) && retries > 0 {
-			retries--
-			goto again
+	if req != nil {
+		timer := time.NewTimer(c.ConnectTimeout)
+		var resp *http.Response
+		resp, err = c.doTimeoutRequest(timer, req)
+		if err != nil {
+			return
 		}
-		return
-	}
-	err = c.Auth.Response(resp)
-	if err != nil {
-		return
+		defer func() {
+			checkClose(resp.Body, &err)
+			// Flush the auth connection - we don't want to keep
+			// it open if keepalives were enabled
+			flushKeepaliveConnections(c.Transport)
+		}()
+		if err = c.parseHeaders(resp, authErrorMap); err != nil {
+			// Try again for a limited number of times on
+			// AuthorizationFailed or BadRequest. This allows us
+			// to try some alternate forms of the request
+			if (err == AuthorizationFailed || err == BadRequest) && retries > 0 {
+				retries--
+				goto again
+			}
+			return
+		}
+		err = c.Auth.Response(resp)
+		if err != nil {
+			return
+		}
 	}
 	c.StorageUrl = c.Auth.StorageUrl(c.Internal)
 	c.AuthToken = c.Auth.Token()

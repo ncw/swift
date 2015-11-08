@@ -12,7 +12,9 @@ import (
 //
 // This encapsulates the different authentication schemes in use
 type Authenticator interface {
+	// Request creates an http.Request for the auth - return nil if not needed
 	Request(*Connection) (*http.Request, error)
+	// Response parses the http.Response
 	Response(resp *http.Response) error
 	// The public storage URL - set Internal to true to read
 	// internal/service net URL
