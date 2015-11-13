@@ -33,6 +33,12 @@ const (
 	allObjectsChanLimit = 1000                  // ...when fetching to a channel
 )
 
+const (
+	RegularObjectType      = 0
+	StaticLargeObjectType  = 1
+	DynamicLargeObjectType = 2
+)
+
 // Connection holds the details of the connection to the swift server.
 //
 // You need to provide UserName, ApiKey and AuthUrl when you create a
@@ -804,6 +810,7 @@ type Object struct {
 	Hash               string    `json:"hash"` // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
 	PseudoDirectory    bool      // Set when using delimiter to show that this directory object does not really exist
 	SubDir             string    `json:"subdir"` // returned only when using delimiter to mark "pseudo directories"
+	ObjectType         int
 }
 
 // Objects returns a slice of Object with information about each
@@ -1202,7 +1209,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 	}
 	// Run the PUT in the background piping it data
 	go func() {
-		file.resp, file.headers, file.err = c.storage(RequestOpts{
+		opts := RequestOpts{
 			Container:  container,
 			ObjectName: objectName,
 			Operation:  "PUT",
@@ -1210,11 +1217,43 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 			Body:       pipeReader,
 			NoResponse: true,
 			ErrorMap:   objectErrorMap,
-		})
+		}
+		file.resp, file.headers, file.err = c.storage(opts)
 		// Signal finished
 		pipeReader.Close()
 		close(file.done)
 	}()
+	return
+}
+
+func (c *Connection) objectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers, parameters url.Values) (headers Headers, err error) {
+	extraHeaders := objectPutHeaders(objectName, &checkHash, Hash, contentType, h)
+	hash := md5.New()
+	var body io.Reader = contents
+	if checkHash {
+		body = io.TeeReader(contents, hash)
+	}
+	_, headers, err = c.storage(RequestOpts{
+		Container:  container,
+		ObjectName: objectName,
+		Operation:  "PUT",
+		Headers:    extraHeaders,
+		Body:       body,
+		NoResponse: true,
+		ErrorMap:   objectErrorMap,
+		Parameters: parameters,
+	})
+	if err != nil {
+		return
+	}
+	if checkHash {
+		receivedMd5 := strings.ToLower(headers["Etag"])
+		calculatedMd5 := fmt.Sprintf("%x", hash.Sum(nil))
+		if receivedMd5 != calculatedMd5 {
+			err = ObjectCorrupted
+			return
+		}
+	}
 	return
 }
 
@@ -1240,33 +1279,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 // If contentType is set it will be used, otherwise one will be
 // guessed from objectName using mime.TypeByExtension
 func (c *Connection) ObjectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers) (headers Headers, err error) {
-	extraHeaders := objectPutHeaders(objectName, &checkHash, Hash, contentType, h)
-	hash := md5.New()
-	var body io.Reader = contents
-	if checkHash {
-		body = io.TeeReader(contents, hash)
-	}
-	_, headers, err = c.storage(RequestOpts{
-		Container:  container,
-		ObjectName: objectName,
-		Operation:  "PUT",
-		Headers:    extraHeaders,
-		Body:       body,
-		NoResponse: true,
-		ErrorMap:   objectErrorMap,
-	})
-	if err != nil {
-		return
-	}
-	if checkHash {
-		receivedMd5 := strings.ToLower(headers["Etag"])
-		calculatedMd5 := fmt.Sprintf("%x", hash.Sum(nil))
-		if receivedMd5 != calculatedMd5 {
-			err = ObjectCorrupted
-			return
-		}
-	}
-	return
+	return c.objectPut(container, objectName, contents, checkHash, Hash, contentType, h, nil)
 }
 
 // ObjectPutBytes creates an object from a []byte in a container.
@@ -1419,38 +1432,17 @@ func (file *ObjectOpenFile) Close() (err error) {
 var _ io.ReadCloser = &ObjectOpenFile{}
 var _ io.Seeker = &ObjectOpenFile{}
 
-// ObjectOpen returns an ObjectOpenFile for reading the contents of
-// the object.  This satisfies the io.ReadCloser and the io.Seeker
-// interfaces.
-//
-// You must call Close() on contents when finished
-//
-// Returns the headers of the response.
-//
-// If checkHash is true then it will calculate the md5sum of the file
-// as it is being received and check it against that returned from the
-// server.  If it is wrong then it will return ObjectCorrupted. It
-// will also check the length returned. No checking will be done if
-// you don't read all the contents.
-//
-// Note that objects with X-Object-Manifest or X-Static-Large-Object
-// set won't ever have their md5sum's checked as the md5sum reported
-// on the object is actually the md5sum of the md5sums of the
-// parts. This isn't very helpful to detect a corrupted download as
-// the size of the parts aren't known without doing more operations.
-// If you want to ensure integrity of an object with a manifest then
-// you will need to download everything in the manifest separately.
-//
-// headers["Content-Type"] will give the content type if desired.
-func (c *Connection) ObjectOpen(container string, objectName string, checkHash bool, h Headers) (file *ObjectOpenFile, headers Headers, err error) {
+func (c *Connection) objectOpen(container string, objectName string, checkHash bool, h Headers, parameters url.Values) (file *ObjectOpenFile, headers Headers, err error) {
 	var resp *http.Response
-	resp, headers, err = c.storage(RequestOpts{
+	opts := RequestOpts{
 		Container:  container,
 		ObjectName: objectName,
 		Operation:  "GET",
 		ErrorMap:   objectErrorMap,
 		Headers:    h,
-	})
+		Parameters: parameters,
+	}
+	resp, headers, err = c.storage(opts)
 	if err != nil {
 		return
 	}
@@ -1478,6 +1470,33 @@ func (c *Connection) ObjectOpen(container string, objectName string, checkHash b
 		file.lengthOk = (err == nil)
 	}
 	return
+}
+
+// ObjectOpen returns an ObjectOpenFile for reading the contents of
+// the object.  This satisfies the io.ReadCloser and the io.Seeker
+// interfaces.
+//
+// You must call Close() on contents when finished
+//
+// Returns the headers of the response.
+//
+// If checkHash is true then it will calculate the md5sum of the file
+// as it is being received and check it against that returned from the
+// server.  If it is wrong then it will return ObjectCorrupted. It
+// will also check the length returned. No checking will be done if
+// you don't read all the contents.
+//
+// Note that objects with X-Object-Manifest or X-Static-Large-Object
+// set won't ever have their md5sum's checked as the md5sum reported
+// on the object is actually the md5sum of the md5sums of the
+// parts. This isn't very helpful to detect a corrupted download as
+// the size of the parts aren't known without doing more operations.
+// If you want to ensure integrity of an object with a manifest then
+// you will need to download everything in the manifest separately.
+//
+// headers["Content-Type"] will give the content type if desired.
+func (c *Connection) ObjectOpen(container string, objectName string, checkHash bool, h Headers) (file *ObjectOpenFile, headers Headers, err error) {
+	return c.objectOpen(container, objectName, checkHash, h, nil)
 }
 
 // ObjectGet gets the object into the io.Writer contents.
@@ -1751,6 +1770,12 @@ func (c *Connection) Object(container string, objectName string) (info Object, h
 		return
 	}
 	info.Hash = resp.Header.Get("Etag")
+	if prefix := resp.Header.Get("X-Object-Manifest"); prefix != "" {
+		info.ObjectType = StaticLargeObjectType
+	} else if resp.Header.Get("X-Static-Large-Object") != "" {
+		info.ObjectType = DynamicLargeObjectType
+	}
+
 	return
 }
 
