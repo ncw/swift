@@ -1193,7 +1193,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 	}
 	// Run the PUT in the background piping it data
 	go func() {
-		file.resp, file.headers, file.err = c.storage(RequestOpts{
+		opts := RequestOpts{
 			Container:  container,
 			ObjectName: objectName,
 			Operation:  "PUT",
@@ -1201,7 +1201,13 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 			Body:       pipeReader,
 			NoResponse: true,
 			ErrorMap:   objectErrorMap,
-		})
+		}
+		if _, slo := extraHeaders["X-Static-Large-Object"]; slo {
+			opts.Parameters = url.Values{}
+			opts.Parameters.Set("multipart-manifest", "put")
+			delete(extraHeaders, "X-Static-Large-Object")
+		}
+		file.resp, file.headers, file.err = c.storage(opts)
 		// Signal finished
 		pipeReader.Close()
 		close(file.done)
