@@ -97,6 +97,8 @@ type Connection struct {
 	Internal       bool              // Set this to true to use the the internal / service network
 	Tenant         string            // Name of the tenant (v2,v3 auth only)
 	TenantId       string            // Id of the tenant (v2,v3 auth only)
+	TenantDomain   string            // Name of the tenant's domain (v3 auth only), only needed if it differs from the user domain
+	TenantDomainId string            // Id of the tenant's domain (v3 auth only), only needed if it differs the from user domain
 	TrustId        string            // Id of the trust (v3 auth only)
 	Transport      http.RoundTripper `json:"-" xml:"-"` // Optional specialised http.Transport (eg. for Google Appengine)
 	// These are filled in after Authenticate is called as are the defaults for above
