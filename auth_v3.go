@@ -149,13 +149,18 @@ func (auth *v3Auth) Request(c *Connection) (*http.Request, error) {
 			v3.Auth.Scope.Project.Id = c.TenantId
 		} else if c.Tenant != "" {
 			v3.Auth.Scope.Project.Name = c.Tenant
-			var defaultDomain v3Domain
-			if c.Domain != "" {
-				defaultDomain = v3Domain{Name: "Default"}
-			} else if c.DomainId != "" {
-				defaultDomain = v3Domain{Id: "Default"}
+			switch {
+			case c.TenantDomain != "":
+				v3.Auth.Scope.Project.Domain = &v3Domain{Name: c.TenantDomain }
+			case c.TenantDomainId != "":
+				v3.Auth.Scope.Project.Domain = &v3Domain{Id: c.TenantDomainId }
+			case c.Domain != "":
+				v3.Auth.Scope.Project.Domain = &v3Domain{Name: c.Domain }
+			case c.DomainId != "":
+				v3.Auth.Scope.Project.Domain = &v3Domain{Id: c.DomainId }
+			default:
+				v3.Auth.Scope.Project.Domain = &v3Domain{Name: "Default" }
 			}
-			v3.Auth.Scope.Project.Domain = &defaultDomain
 		}
 	}
 
