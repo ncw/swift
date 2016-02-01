@@ -134,3 +134,4 @@ Contributors
 - Fabian Ruff <fabian@progra.de>
 - Arturo Reuschenbach Puncernau <reuschenbach@gmail.com>
 - Petr Kotek <petr.kotek@bigcommerce.com>
+- Stefan Majewsky <stefan.majewsky@sap.com>
