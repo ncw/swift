@@ -472,7 +472,7 @@ func (objr objectResource) get(a *action) interface{} {
 		if end == -1 {
 			end = size-1
 		}
-		reader = io.LimitReader(io.MultiReader(segments...), int64(end-start))
+		reader = io.LimitReader(io.MultiReader(segments...), int64(end-start+1))
 	} else if value, ok := obj.meta["X-Static-Large-Object"]; ok && value[0] == "True" && a.req.URL.Query().Get("multipart-manifest") != "get" {
 		var segments []io.Reader
 		var segmentList []segment
