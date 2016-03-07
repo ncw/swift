@@ -10,9 +10,6 @@ import (
 const (
 	v3AuthMethodToken        = "token"
 	v3AuthMethodPassword     = "password"
-	v3InterfacePublic        = "public"
-	v3InterfaceInternal      = "internal"
-	v3InterfaceAdmin         = "admin"
 	v3CatalogTypeObjectStore = "object-store"
 )
 
@@ -88,7 +85,8 @@ type v3AuthResponse struct {
 		Catalog []struct {
 			Id, Namem, Type string
 			Endpoints       []struct {
-				Id, Region_Id, Url, Region, Interface string
+				Id, Region_Id, Url, Region string
+				Interface                  EndpointType
 			}
 		}
 
@@ -193,18 +191,12 @@ func (auth *v3Auth) Response(resp *http.Response) error {
 	return err
 }
 
-func (auth *v3Auth) endpointUrl(Type string, Internal bool) string {
+func (auth *v3Auth) endpointUrl(Type string, endpointType EndpointType) string {
 	for _, catalog := range auth.Auth.Token.Catalog {
 		if catalog.Type == Type {
 			for _, endpoint := range catalog.Endpoints {
-				if Internal {
-					if endpoint.Interface == v3InterfaceInternal {
-						return endpoint.Url
-					}
-				} else {
-					if endpoint.Interface == v3InterfacePublic {
-						return endpoint.Url
-					}
+				if endpoint.Interface == endpointType {
+					return endpoint.Url
 				}
 			}
 		}
@@ -213,7 +205,15 @@ func (auth *v3Auth) endpointUrl(Type string, Internal bool) string {
 }
 
 func (auth *v3Auth) StorageUrl(Internal bool) string {
-	return auth.endpointUrl(v3CatalogTypeObjectStore, Internal)
+	endpointType := EndpointTypePublic
+	if Internal {
+		endpointType = EndpointTypeInternal
+	}
+	return auth.StorageUrlForEndpoint(endpointType)
+}
+
+func (auth *v3Auth) StorageUrlForEndpoint(endpointType EndpointType) string {
+	return auth.endpointUrl("object-store", endpointType)
 }
 
 func (auth *v3Auth) Token() string {
