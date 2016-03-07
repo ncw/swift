@@ -33,10 +33,15 @@ const (
 	allObjectsChanLimit = 1000                  // ...when fetching to a channel
 )
 
+// ObjectType is the type of the swift object, regular, static large,
+// or dynamic large.
+type ObjectType int
+
+// Values that ObjectType can take
 const (
-	RegularObjectType = 0
-	StaticLargeObjectType = 1
-	DynamicLargeObjectType = 2
+	RegularObjectType ObjectType = iota
+	StaticLargeObjectType
+	DynamicLargeObjectType
 )
 
 // Connection holds the details of the connection to the swift server.
@@ -797,15 +802,15 @@ func (c *Connection) ObjectNames(container string, opts *ObjectsOpts) ([]string,
 
 // Object contains information about an object
 type Object struct {
-	Name               string    `json:"name"`          // object name
-	ContentType        string    `json:"content_type"`  // eg application/directory
-	Bytes              int64     `json:"bytes"`         // size in bytes
-	ServerLastModified string    `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680' as a string supplied by the server
-	LastModified       time.Time // Last modified time converted to a time.Time
-	Hash               string    `json:"hash"` // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
-	PseudoDirectory    bool      // Set when using delimiter to show that this directory object does not really exist
-	SubDir             string    `json:"subdir"` // returned only when using delimiter to mark "pseudo directories"
-	ObjectType         int
+	Name               string     `json:"name"`          // object name
+	ContentType        string     `json:"content_type"`  // eg application/directory
+	Bytes              int64      `json:"bytes"`         // size in bytes
+	ServerLastModified string     `json:"last_modified"` // Last modified time, eg '2011-06-30T08:20:47.736680' as a string supplied by the server
+	LastModified       time.Time  // Last modified time converted to a time.Time
+	Hash               string     `json:"hash"` // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
+	PseudoDirectory    bool       // Set when using delimiter to show that this directory object does not really exist
+	SubDir             string     `json:"subdir"` // returned only when using delimiter to mark "pseudo directories"
+	ObjectType         ObjectType // type of this object
 }
 
 // Objects returns a slice of Object with information about each
