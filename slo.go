@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// StaticLargeObjectCreateFile represents an open static large object
 type StaticLargeObjectCreateFile struct {
 	LargeObjectCreateFile
 }
@@ -43,10 +44,17 @@ type swiftSegment struct {
 }
 
 // Check it satisfies the interfaces
-var _ io.Seeker = &StaticLargeObjectCreateFile{}
-var _ io.Closer = &StaticLargeObjectCreateFile{}
-var _ io.ReaderFrom = &StaticLargeObjectCreateFile{}
+var (
+	_ io.Writer     = &StaticLargeObjectCreateFile{}
+	_ io.Seeker     = &StaticLargeObjectCreateFile{}
+	_ io.Closer     = &StaticLargeObjectCreateFile{}
+	_ io.ReaderFrom = &StaticLargeObjectCreateFile{}
+)
 
+// StaticLargeObjectCreateFile creates a static large object returning
+// an object which satisfies io.Writer, io.Seeker, io.Closer and
+// io.ReaderFrom.  The flags are as passes to the LargeObjectCreate
+// method.
 func (c *Connection) StaticLargeObjectCreateFile(container string, objectName string, flags int, checkHash bool, Hash string, contentType string, h Headers) (*StaticLargeObjectCreateFile, error) {
 	lo, err := c.LargeObjectCreate(container, objectName, flags, checkHash, Hash, contentType, h)
 	if err != nil {
@@ -58,14 +66,18 @@ func (c *Connection) StaticLargeObjectCreateFile(container string, objectName st
 	}, nil
 }
 
+// StaticLargeObjectCreate creates or truncates an existing static
+// large object returning a writeable object.
 func (c *Connection) StaticLargeObjectCreate(container string, objectName string, checkHash bool, Hash string, contentType string, h Headers) (*StaticLargeObjectCreateFile, error) {
 	return c.StaticLargeObjectCreateFile(container, objectName, os.O_TRUNC|os.O_CREATE, checkHash, Hash, contentType, h)
 }
 
+// StaticLargeObjectDelete deletes a static large object and all of its segments.
 func (c *Connection) StaticLargeObjectDelete(container string, path string) error {
 	return c.LargeObjectDelete(container, path)
 }
 
+// StaticLargeObjectMove moves a static large object from srcContainer, srcObjectName to dstContainer, dstObjectName
 func (c *Connection) StaticLargeObjectMove(srcContainer string, srcObjectName string, dstContainer string, dstObjectName string) error {
 	info, headers, err := c.Object(srcContainer, srcObjectName)
 	if err != nil {
@@ -88,6 +100,7 @@ func (c *Connection) StaticLargeObjectMove(srcContainer string, srcObjectName st
 	return nil
 }
 
+// createSLOManifest creates a static large object manifest
 func (c *Connection) createSLOManifest(container string, path string, contentType string, segments []Object) error {
 	sloSegments := make([]swiftSegment, len(segments))
 	for i, segment := range segments {
@@ -110,12 +123,14 @@ func (c *Connection) createSLOManifest(container string, path string, contentTyp
 	return nil
 }
 
+// Write satisfies the io.Writer interface
 func (file *StaticLargeObjectCreateFile) Write(buf []byte) (int, error) {
 	reader := bytes.NewReader(buf)
 	n, err := file.ReadFrom(reader)
 	return int(n), err
 }
 
+// ReadFrom statisfies the io.ReaderFrom interface
 func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, err error) {
 	var (
 		multi         io.Reader
@@ -272,6 +287,7 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 	return bytesRead, err
 }
 
+// Close satisfies the io.Closer interface
 func (file *StaticLargeObjectCreateFile) Close() error {
 	if err := file.conn.createSLOManifest(file.container, file.objectName, file.contentType, file.segments); err != nil {
 		return err
