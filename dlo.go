@@ -25,8 +25,8 @@ var (
 // returning an object which satisfies io.Writer, io.Seeker, io.Closer
 // and io.ReaderFrom.  The flags are as passes to the
 // LargeObjectCreate method.
-func (c *Connection) DynamicLargeObjectCreateFile(container string, objectName string, flags int, checkHash bool, Hash string, contentType string, h Headers) (*DynamicLargeObjectCreateFile, error) {
-	lo, err := c.LargeObjectCreate(container, objectName, flags, checkHash, Hash, contentType, h)
+func (c *Connection) DynamicLargeObjectCreateFile(opts *LargeObjectOpts) (*DynamicLargeObjectCreateFile, error) {
+	lo, err := c.LargeObjectCreate(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -37,9 +37,11 @@ func (c *Connection) DynamicLargeObjectCreateFile(container string, objectName s
 }
 
 // DynamicLargeObjectCreate creates or truncates an existing dynamic
-// large object returning a writeable object.
-func (c *Connection) DynamicLargeObjectCreate(container string, objectName string, checkHash bool, Hash string, contentType string, h Headers) (*DynamicLargeObjectCreateFile, error) {
-	return c.DynamicLargeObjectCreateFile(container, objectName, os.O_TRUNC|os.O_CREATE, checkHash, Hash, contentType, h)
+// large object returning a writeable object.  This sets opts.Flags to
+// an appropriate value before calling DynamicLargeObjectCreateFile
+func (c *Connection) DynamicLargeObjectCreate(opts *LargeObjectOpts) (*DynamicLargeObjectCreateFile, error) {
+	opts.Flags = os.O_TRUNC | os.O_CREATE
+	return c.DynamicLargeObjectCreateFile(opts)
 }
 
 // DynamicLargeObjectDelete deletes a dynamic large object and all of its segments.

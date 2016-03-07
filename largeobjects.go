@@ -112,23 +112,35 @@ func (c *Connection) getAllSegments(container string, path string, headers Heade
 	return segments, nil
 }
 
-// LargeObjectCreate creates a large object at container, objectName.
+// LargeObjectOpts describes how a large object should be created
+type LargeObjectOpts struct {
+	Container   string  // Name of container to place object
+	ObjectName  string  // Name of object
+	Flags       int     // Creation flags
+	CheckHash   bool    // If set Check the hash
+	Hash        string  // If set use this hash to check
+	ContentType string  // Content-Type of the object
+	Headers     Headers // Additional headers to upload the object with
+	ChunkSize   int64   // Size of chunks of the object, defaults to 10MB if not set
+}
+
+// LargeObjectCreate creates a large object at opts.Container, opts.ObjectName.
 //
-// flags can have the following bits set
+// opts.Flags can have the following bits set
 //   os.TRUNC  - remove the contents of the large object if it exists
 //   os.APPEND - write at the end of the large object
-func (c *Connection) LargeObjectCreate(container string, objectName string, flags int, checkHash bool, Hash string, contentType string, h Headers) (*LargeObjectCreateFile, error) {
+func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreateFile, error) {
 	var (
 		segmentPath   string
 		segments      []Object
 		currentLength int64
 	)
 
-	info, headers, err := c.Object(container, objectName)
+	info, headers, err := c.Object(opts.Container, opts.ObjectName)
 
 	if err == nil {
 		if isManifest(headers) {
-			segments, err = c.getAllSegments(container, objectName, headers)
+			segments, err = c.getAllSegments(opts.Container, opts.ObjectName, headers)
 			if err != nil {
 				return nil, err
 			}
@@ -136,20 +148,20 @@ func (c *Connection) LargeObjectCreate(container string, objectName string, flag
 				segmentPath = gopath.Dir(segments[0].Name)
 			}
 		} else {
-			if segmentPath, err = swiftSegmentPath(objectName); err != nil {
+			if segmentPath, err = swiftSegmentPath(opts.ObjectName); err != nil {
 				return nil, err
 			}
-			if err := c.ObjectMove(container, objectName, container, getSegment(segmentPath, 1)); err != nil {
+			if err := c.ObjectMove(opts.Container, opts.ObjectName, opts.Container, getSegment(segmentPath, 1)); err != nil {
 				return nil, err
 			}
 			segments = append(segments, info)
 		}
-		if flags&os.O_TRUNC != 0 {
-			c.LargeObjectDelete(container, objectName)
+		if opts.Flags&os.O_TRUNC != 0 {
+			c.LargeObjectDelete(opts.Container, opts.ObjectName)
 		}
 		currentLength = info.Bytes
 	} else if err == ObjectNotFound {
-		if segmentPath, err = swiftSegmentPath(objectName); err != nil {
+		if segmentPath, err = swiftSegmentPath(opts.ObjectName); err != nil {
 			return nil, err
 		}
 	} else {
@@ -158,16 +170,20 @@ func (c *Connection) LargeObjectCreate(container string, objectName string, flag
 
 	file := &LargeObjectCreateFile{
 		conn:          c,
-		checkHash:     checkHash,
-		container:     container,
-		objectName:    objectName,
-		chunkSize:     10 * 1024 * 1024,
+		checkHash:     opts.CheckHash,
+		container:     opts.Container,
+		objectName:    opts.ObjectName,
+		chunkSize:     opts.ChunkSize,
 		prefix:        segmentPath,
 		segments:      segments,
 		currentLength: currentLength,
 	}
 
-	if flags&os.O_APPEND != 0 {
+	if file.chunkSize == 0 {
+		file.chunkSize = 10 * 1024 * 1024
+	}
+
+	if opts.Flags&os.O_APPEND != 0 {
 		file.filePos = currentLength
 	}
 
