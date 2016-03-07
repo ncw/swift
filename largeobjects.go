@@ -15,8 +15,10 @@ import (
 	"strings"
 )
 
+// NotLargeObject is returned if an operation is performed on an object which isn't large.
 var NotLargeObject = errors.New("Not a large object")
 
+// LargeObjectCreateFile represents an open static or dynamic large object
 type LargeObjectCreateFile struct {
 	conn          *Connection
 	container     string
@@ -110,6 +112,11 @@ func (c *Connection) getAllSegments(container string, path string, headers Heade
 	return segments, nil
 }
 
+// LargeObjectCreate creates a large object at container, objectName.
+//
+// flags can have the following bits set
+//   os.TRUNC  - remove the contents of the large object if it exists
+//   os.APPEND - write at the end of the large object
 func (c *Connection) LargeObjectCreate(container string, objectName string, flags int, checkHash bool, Hash string, contentType string, h Headers) (*LargeObjectCreateFile, error) {
 	var (
 		segmentPath   string
@@ -167,6 +174,7 @@ func (c *Connection) LargeObjectCreate(container string, objectName string, flag
 	return file, nil
 }
 
+// LargeObjectDelete deletes the large object named by container, path
 func (c *Connection) LargeObjectDelete(container string, path string) error {
 	info, headers, err := c.Object(container, path)
 	if err != nil {
@@ -244,7 +252,7 @@ func (c *Connection) LargeObjectGetSegments(container string, path string) (segm
 	return nil, NotLargeObject
 }
 
-// Set offset for the next write operation
+// Seek sets the offset for the next write operation
 func (file *LargeObjectCreateFile) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case 0:

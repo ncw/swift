@@ -8,15 +8,23 @@ import (
 	"strconv"
 )
 
+// DynamicLargeObjectCreateFile represents an open static large object
 type DynamicLargeObjectCreateFile struct {
 	LargeObjectCreateFile
 }
 
 // Check it satisfies the interfaces
-var _ io.WriteSeeker = &DynamicLargeObjectCreateFile{}
-var _ io.WriteCloser = &DynamicLargeObjectCreateFile{}
-var _ io.ReaderFrom = &DynamicLargeObjectCreateFile{}
+var (
+	_ io.Writer     = &DynamicLargeObjectCreateFile{}
+	_ io.Seeker     = &DynamicLargeObjectCreateFile{}
+	_ io.Closer     = &DynamicLargeObjectCreateFile{}
+	_ io.ReaderFrom = &DynamicLargeObjectCreateFile{}
+)
 
+// DynamicLargeObjectCreateFile creates a dynamic large object
+// returning an object which satisfies io.Writer, io.Seeker, io.Closer
+// and io.ReaderFrom.  The flags are as passes to the
+// LargeObjectCreate method.
 func (c *Connection) DynamicLargeObjectCreateFile(container string, objectName string, flags int, checkHash bool, Hash string, contentType string, h Headers) (*DynamicLargeObjectCreateFile, error) {
 	lo, err := c.LargeObjectCreate(container, objectName, flags, checkHash, Hash, contentType, h)
 	if err != nil {
@@ -28,14 +36,18 @@ func (c *Connection) DynamicLargeObjectCreateFile(container string, objectName s
 	}, nil
 }
 
+// DynamicLargeObjectCreate creates or truncates an existing dynamic
+// large object returning a writeable object.
 func (c *Connection) DynamicLargeObjectCreate(container string, objectName string, checkHash bool, Hash string, contentType string, h Headers) (*DynamicLargeObjectCreateFile, error) {
 	return c.DynamicLargeObjectCreateFile(container, objectName, os.O_TRUNC|os.O_CREATE, checkHash, Hash, contentType, h)
 }
 
+// DynamicLargeObjectDelete deletes a dynamic large object and all of its segments.
 func (c *Connection) DynamicLargeObjectDelete(container string, path string) error {
 	return c.LargeObjectDelete(container, path)
 }
 
+// DynamicLargeObjectMove moves a dynamic large object from srcContainer, srcObjectName to dstContainer, dstObjectName
 func (c *Connection) DynamicLargeObjectMove(srcContainer string, srcObjectName string, dstContainer string, dstObjectName string) error {
 	info, headers, err := c.Object(dstContainer, srcObjectName)
 	if err != nil {
@@ -54,6 +66,7 @@ func (c *Connection) DynamicLargeObjectMove(srcContainer string, srcObjectName s
 	return nil
 }
 
+// createDLOManifest creates a dynamic large object manifest
 func (c *Connection) createDLOManifest(container string, objectName string, prefix string, contentType string) error {
 	headers := make(Headers)
 	headers["X-Object-Manifest"] = prefix
@@ -69,13 +82,14 @@ func (c *Connection) createDLOManifest(container string, objectName string, pref
 	return nil
 }
 
+// Write satisfies the io.Writer interface
 func (file *DynamicLargeObjectCreateFile) Write(buf []byte) (int, error) {
 	reader := bytes.NewReader(buf)
 	n, err := file.ReadFrom(reader)
 	return int(n), err
 }
 
-// Write bytes to the object - see io.Writer
+// ReadFrom statisfies the io.ReaderFrom interface
 func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, err error) {
 	var (
 		multi         io.Reader
@@ -202,6 +216,7 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 	return bytesRead, nil
 }
 
+// Close satisfies the io.Closer interface
 func (file *DynamicLargeObjectCreateFile) Close() error {
 	return file.conn.createDLOManifest(file.container, file.objectName, file.container+"/"+file.prefix, file.contentType)
 }
