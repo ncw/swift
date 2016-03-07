@@ -53,10 +53,10 @@ var (
 
 // StaticLargeObjectCreateFile creates a static large object returning
 // an object which satisfies io.Writer, io.Seeker, io.Closer and
-// io.ReaderFrom.  The flags are as passes to the LargeObjectCreate
+// io.ReaderFrom.  The flags are as passed to the LargeObjectCreate
 // method.
-func (c *Connection) StaticLargeObjectCreateFile(container string, objectName string, flags int, checkHash bool, Hash string, contentType string, h Headers) (*StaticLargeObjectCreateFile, error) {
-	lo, err := c.LargeObjectCreate(container, objectName, flags, checkHash, Hash, contentType, h)
+func (c *Connection) StaticLargeObjectCreateFile(opts *LargeObjectOpts) (*StaticLargeObjectCreateFile, error) {
+	lo, err := c.LargeObjectCreate(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -67,9 +67,11 @@ func (c *Connection) StaticLargeObjectCreateFile(container string, objectName st
 }
 
 // StaticLargeObjectCreate creates or truncates an existing static
-// large object returning a writeable object.
-func (c *Connection) StaticLargeObjectCreate(container string, objectName string, checkHash bool, Hash string, contentType string, h Headers) (*StaticLargeObjectCreateFile, error) {
-	return c.StaticLargeObjectCreateFile(container, objectName, os.O_TRUNC|os.O_CREATE, checkHash, Hash, contentType, h)
+// large object returning a writeable object. This sets opts.Flags to
+// an appropriate value before calling StaticLargeObjectCreateFile
+func (c *Connection) StaticLargeObjectCreate(opts *LargeObjectOpts) (*StaticLargeObjectCreateFile, error) {
+	opts.Flags = os.O_TRUNC | os.O_CREATE
+	return c.StaticLargeObjectCreateFile(opts)
 }
 
 // StaticLargeObjectDelete deletes a static large object and all of its segments.
