@@ -1563,7 +1563,12 @@ func TestQueryInfo(t *testing.T) {
 }
 
 func TestDLOCreate(t *testing.T) {
-	out, err := c.DynamicLargeObjectCreate(CONTAINER, OBJECT, false, "", "image/jpeg", nil)
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreate(&opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1588,7 +1593,13 @@ func TestDLOCreate(t *testing.T) {
 }
 
 func TestDLOInsert(t *testing.T) {
-	out, err := c.DynamicLargeObjectCreateFile(CONTAINER, OBJECT, 0, true, "", "image/jpeg", nil)
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		CheckHash:   true,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreateFile(&opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1612,7 +1623,14 @@ func TestDLOInsert(t *testing.T) {
 }
 
 func TestDLOAppend(t *testing.T) {
-	out, err := c.DynamicLargeObjectCreateFile(CONTAINER, OBJECT, os.O_APPEND, true, "", "image/jpeg", nil)
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		Flags:       os.O_APPEND,
+		CheckHash:   true,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreateFile(&opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1638,7 +1656,14 @@ func TestDLOAppend(t *testing.T) {
 }
 
 func TestDLOTruncate(t *testing.T) {
-	out, err := c.DynamicLargeObjectCreateFile(CONTAINER, OBJECT, os.O_TRUNC, true, "", "image/jpeg", nil)
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		Flags:       os.O_TRUNC,
+		CheckHash:   true,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreateFile(&opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1686,7 +1711,12 @@ func TestDLOMove(t *testing.T) {
 }
 
 func TestSLOCreate(t *testing.T) {
-	out, err := c.StaticLargeObjectCreate(CONTAINER, OBJECT, false, "", "image/jpeg", nil)
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.StaticLargeObjectCreate(&opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1711,7 +1741,12 @@ func TestSLOCreate(t *testing.T) {
 }
 
 func TestSLOInsert(t *testing.T) {
-	out, err := c.StaticLargeObjectCreateFile(CONTAINER, OBJECT, 0, false, "", "image/jpeg", nil)
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.StaticLargeObjectCreateFile(&opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1735,7 +1770,14 @@ func TestSLOInsert(t *testing.T) {
 }
 
 func TestSLOAppend(t *testing.T) {
-	out, err := c.StaticLargeObjectCreateFile(CONTAINER, OBJECT, os.O_APPEND, true, "", "image/jpeg", nil)
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		Flags:       os.O_APPEND,
+		CheckHash:   true,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.StaticLargeObjectCreateFile(&opts)
 	if err != nil {
 		t.Fatal(err)
 	}
