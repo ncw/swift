@@ -113,6 +113,8 @@ type Connection struct {
 	TenantDomainId string            // Id of the tenant's domain (v3 auth only), only needed if it differs the from user domain
 	TrustId        string            // Id of the trust (v3 auth only)
 	Transport      http.RoundTripper `json:"-" xml:"-"` // Optional specialised http.Transport (eg. for Google Appengine)
+	// BulkDeleteSupport is filled after QueryInfo is called
+	BulkDeleteSupport bool
 	// These are filled in after Authenticate is called as are the defaults for above
 	StorageUrl string
 	AuthToken  string
@@ -429,6 +431,7 @@ func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
 		err = readJson(resp, &infos)
 		return infos, err
 	}
+	_, c.BulkDeleteSupport = infos["bulk_delete"]
 	return nil, err
 }
 
