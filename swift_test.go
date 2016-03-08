@@ -1562,6 +1562,229 @@ func TestQueryInfo(t *testing.T) {
 	}
 }
 
+func TestDLOCreate(t *testing.T) {
+	out, err := c.DynamicLargeObjectCreate(CONTAINER, OBJECT, false, "", "image/jpeg", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+}
+
+func TestDLOInsert(t *testing.T) {
+	out, err := c.DynamicLargeObjectCreateFile(CONTAINER, OBJECT, 0, true, "", "image/jpeg", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	fmt.Fprintf(multi, "%d%s\n", 0, CONTENTS)
+	fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+}
+
+func TestDLOAppend(t *testing.T) {
+	out, err := c.DynamicLargeObjectCreateFile(CONTAINER, OBJECT, os.O_APPEND, true, "", "image/jpeg", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	buf := bytes.NewBuffer([]byte(contents))
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		fmt.Fprintf(multi, "%d %s\n", i+10, CONTENTS)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err = c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+}
+
+func TestDLOTruncate(t *testing.T) {
+	out, err := c.DynamicLargeObjectCreateFile(CONTAINER, OBJECT, os.O_TRUNC, true, "", "image/jpeg", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	fmt.Fprintf(multi, "%s", CONTENTS)
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+}
+
+func TestDLOMove(t *testing.T) {
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.DynamicLargeObjectMove(CONTAINER, OBJECT, CONTAINER, OBJECT2); err != nil {
+		t.Fatal(err)
+	}
+
+	contents2, err := c.ObjectGetString(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if contents2 != contents {
+		t.Error("Contents wrong")
+	}
+
+	err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSLOCreate(t *testing.T) {
+	out, err := c.StaticLargeObjectCreate(CONTAINER, OBJECT, false, "", "image/jpeg", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+}
+
+func TestSLOInsert(t *testing.T) {
+	out, err := c.StaticLargeObjectCreateFile(CONTAINER, OBJECT, 0, false, "", "image/jpeg", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	fmt.Fprintf(multi, "%d%s\n", 0, CONTENTS)
+	fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+}
+
+func TestSLOAppend(t *testing.T) {
+	out, err := c.StaticLargeObjectCreateFile(CONTAINER, OBJECT, os.O_APPEND, true, "", "image/jpeg", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	buf := bytes.NewBuffer([]byte(contents))
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		fmt.Fprintf(multi, "%d %s\n", i+10, CONTENTS)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err = c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+}
+
+func TestSLOMove(t *testing.T) {
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.StaticLargeObjectMove(CONTAINER, OBJECT, CONTAINER, OBJECT2); err != nil {
+		t.Fatal(err)
+	}
+
+	contents2, err := c.ObjectGetString(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if contents2 != contents {
+		t.Error("Contents wrong")
+	}
+
+	err = c.StaticLargeObjectDelete(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestContainerDelete(t *testing.T) {
 	err := c.ContainerDelete(CONTAINER)
 	if err != nil {

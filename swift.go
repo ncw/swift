@@ -33,6 +33,12 @@ const (
 	allObjectsChanLimit = 1000                  // ...when fetching to a channel
 )
 
+const (
+	RegularObjectType = 0
+	StaticLargeObjectType = 1
+	DynamicLargeObjectType = 2
+)
+
 // Connection holds the details of the connection to the swift server.
 //
 // You need to provide UserName, ApiKey and AuthUrl when you create a
@@ -799,6 +805,7 @@ type Object struct {
 	Hash               string    `json:"hash"` // MD5 hash, eg "d41d8cd98f00b204e9800998ecf8427e"
 	PseudoDirectory    bool      // Set when using delimiter to show that this directory object does not really exist
 	SubDir             string    `json:"subdir"` // returned only when using delimiter to mark "pseudo directories"
+	ObjectType         int
 }
 
 // Objects returns a slice of Object with information about each
@@ -1197,7 +1204,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 	}
 	// Run the PUT in the background piping it data
 	go func() {
-		file.resp, file.headers, file.err = c.storage(RequestOpts{
+		opts := RequestOpts{
 			Container:  container,
 			ObjectName: objectName,
 			Operation:  "PUT",
@@ -1205,11 +1212,43 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 			Body:       pipeReader,
 			NoResponse: true,
 			ErrorMap:   objectErrorMap,
-		})
+		}
+		file.resp, file.headers, file.err = c.storage(opts)
 		// Signal finished
 		pipeReader.Close()
 		close(file.done)
 	}()
+	return
+}
+
+func (c *Connection) objectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers, parameters url.Values) (headers Headers, err error) {
+	extraHeaders := objectPutHeaders(objectName, &checkHash, Hash, contentType, h)
+	hash := md5.New()
+	var body io.Reader = contents
+	if checkHash {
+		body = io.TeeReader(contents, hash)
+	}
+	_, headers, err = c.storage(RequestOpts{
+		Container:  container,
+		ObjectName: objectName,
+		Operation:  "PUT",
+		Headers:    extraHeaders,
+		Body:       body,
+		NoResponse: true,
+		ErrorMap:   objectErrorMap,
+		Parameters: parameters,
+	})
+	if err != nil {
+		return
+	}
+	if checkHash {
+		receivedMd5 := strings.ToLower(headers["Etag"])
+		calculatedMd5 := fmt.Sprintf("%x", hash.Sum(nil))
+		if receivedMd5 != calculatedMd5 {
+			err = ObjectCorrupted
+			return
+		}
+	}
 	return
 }
 
@@ -1235,33 +1274,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 // If contentType is set it will be used, otherwise one will be
 // guessed from objectName using mime.TypeByExtension
 func (c *Connection) ObjectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers) (headers Headers, err error) {
-	extraHeaders := objectPutHeaders(objectName, &checkHash, Hash, contentType, h)
-	hash := md5.New()
-	var body io.Reader = contents
-	if checkHash {
-		body = io.TeeReader(contents, hash)
-	}
-	_, headers, err = c.storage(RequestOpts{
-		Container:  container,
-		ObjectName: objectName,
-		Operation:  "PUT",
-		Headers:    extraHeaders,
-		Body:       body,
-		NoResponse: true,
-		ErrorMap:   objectErrorMap,
-	})
-	if err != nil {
-		return
-	}
-	if checkHash {
-		receivedMd5 := strings.ToLower(headers["Etag"])
-		calculatedMd5 := fmt.Sprintf("%x", hash.Sum(nil))
-		if receivedMd5 != calculatedMd5 {
-			err = ObjectCorrupted
-			return
-		}
-	}
-	return
+	return c.objectPut(container, objectName, contents, checkHash, Hash, contentType, h, nil)
 }
 
 // ObjectPutBytes creates an object from a []byte in a container.
@@ -1414,6 +1427,46 @@ func (file *ObjectOpenFile) Close() (err error) {
 var _ io.ReadCloser = &ObjectOpenFile{}
 var _ io.Seeker = &ObjectOpenFile{}
 
+func (c *Connection) objectOpen(container string, objectName string, checkHash bool, h Headers, parameters url.Values) (file *ObjectOpenFile, headers Headers, err error) {
+	var resp *http.Response
+	opts := RequestOpts{
+		Container:  container,
+		ObjectName: objectName,
+		Operation:  "GET",
+		ErrorMap:   objectErrorMap,
+		Headers:    h,
+		Parameters: parameters,
+	}
+	resp, headers, err = c.storage(opts)
+	if err != nil {
+		return
+	}
+	// Can't check MD5 on an object with X-Object-Manifest set
+	if checkHash && isManifest(headers) {
+		// log.Printf("swift: turning off md5 checking on object with manifest %v", objectName)
+		checkHash = false
+	}
+	file = &ObjectOpenFile{
+		connection: c,
+		container:  container,
+		objectName: objectName,
+		headers:    h,
+		resp:       resp,
+		checkHash:  checkHash,
+		body:       resp.Body,
+	}
+	if checkHash {
+		file.hash = md5.New()
+		file.body = io.TeeReader(resp.Body, file.hash)
+	}
+	// Read Content-Length
+	if resp.Header.Get("Content-Length") != "" {
+		file.length, err = getInt64FromHeader(resp, "Content-Length")
+		file.lengthOk = (err == nil)
+	}
+	return
+}
+
 // ObjectOpen returns an ObjectOpenFile for reading the contents of
 // the object.  This satisfies the io.ReadCloser and the io.Seeker
 // interfaces.
@@ -1438,41 +1491,7 @@ var _ io.Seeker = &ObjectOpenFile{}
 //
 // headers["Content-Type"] will give the content type if desired.
 func (c *Connection) ObjectOpen(container string, objectName string, checkHash bool, h Headers) (file *ObjectOpenFile, headers Headers, err error) {
-	var resp *http.Response
-	resp, headers, err = c.storage(RequestOpts{
-		Container:  container,
-		ObjectName: objectName,
-		Operation:  "GET",
-		ErrorMap:   objectErrorMap,
-		Headers:    h,
-	})
-	if err != nil {
-		return
-	}
-	// Can't check MD5 on an object with X-Object-Manifest set
-	if checkHash && headers["X-Object-Manifest"] != "" {
-		// log.Printf("swift: turning off md5 checking on object with manifest %v", objectName)
-		checkHash = false
-	}
-	file = &ObjectOpenFile{
-		connection: c,
-		container:  container,
-		objectName: objectName,
-		headers:    h,
-		resp:       resp,
-		checkHash:  checkHash,
-		body:       resp.Body,
-	}
-	if checkHash {
-		file.hash = md5.New()
-		file.body = io.TeeReader(resp.Body, file.hash)
-	}
-	// Read Content-Length
-	if resp.Header.Get("Content-Length") != "" {
-		file.length, err = getInt64FromHeader(resp, "Content-Length")
-		file.lengthOk = (err == nil)
-	}
-	return
+	return c.objectOpen(container, objectName, checkHash, h, nil)
 }
 
 // ObjectGet gets the object into the io.Writer contents.
@@ -1746,6 +1765,12 @@ func (c *Connection) Object(container string, objectName string) (info Object, h
 		return
 	}
 	info.Hash = resp.Header.Get("Etag")
+	if prefix := resp.Header.Get("X-Object-Manifest"); prefix != "" {
+		info.ObjectType = StaticLargeObjectType
+	} else if resp.Header.Get("X-Static-Large-Object") != "" {
+		info.ObjectType = DynamicLargeObjectType
+	}
+
 	return
 }
 
