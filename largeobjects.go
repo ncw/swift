@@ -207,7 +207,7 @@ func (c *Connection) LargeObjectDelete(container string, path string) error {
 	}
 	objects = append(objects, info)
 
-	if false && len(objects) > 0 {
+	if c.BulkDeleteSupport && len(objects) > 0 {
 		filenames := make([]string, len(objects))
 		for i, obj := range objects {
 			filenames[i] = obj.Name
