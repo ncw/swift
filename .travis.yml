@@ -10,4 +10,5 @@ go:
   - tip
 
 script:
+  - test -z "$(go fmt ./...)"
   - go test
