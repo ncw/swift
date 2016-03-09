@@ -56,8 +56,8 @@ func (c *Connection) DynamicLargeObjectMove(srcContainer string, srcObjectName s
 		return err
 	}
 
-	_, segmentPath := parseFullPath(headers["X-Object-Manifest"])
-	if err := c.createDLOManifest(dstContainer, dstObjectName, dstContainer+"/"+segmentPath, info.ContentType); err != nil {
+	segmentContainer, segmentPath := parseFullPath(headers["X-Object-Manifest"])
+	if err := c.createDLOManifest(dstContainer, dstObjectName, segmentContainer+"/"+segmentPath, info.ContentType); err != nil {
 		return err
 	}
 
@@ -106,7 +106,7 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 	readers := []io.Reader{}
 	hash := md5.New()
 
-	file.segments, err = file.conn.ObjectsAll(file.container, &ObjectsOpts{Prefix: file.prefix})
+	file.segments, err = file.conn.ObjectsAll(file.segmentContainer, &ObjectsOpts{Prefix: file.prefix})
 	if err != nil {
 		return 0, err
 	}
@@ -149,7 +149,7 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 	writeSegment := func() (finished bool, bytesRead int64, err error) {
 		segment := getSegment(file.prefix, partNumber)
 
-		currentSegment, err := file.conn.ObjectCreate(file.container, segment, false, "", file.contentType, nil)
+		currentSegment, err := file.conn.ObjectCreate(file.segmentContainer, segment, false, "", file.contentType, nil)
 		if err != nil {
 			return false, bytesRead, err
 		}
@@ -220,5 +220,5 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 
 // Close satisfies the io.Closer interface
 func (file *DynamicLargeObjectCreateFile) Close() error {
-	return file.conn.createDLOManifest(file.container, file.objectName, file.container+"/"+file.prefix, file.contentType)
+	return file.conn.createDLOManifest(file.container, file.objectName, file.segmentContainer+"/"+file.prefix, file.contentType)
 }
