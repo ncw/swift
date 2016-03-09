@@ -44,6 +44,7 @@ var (
 
 const (
 	CONTAINER          = "GoSwiftUnitTest"
+	SEGMENTS_CONTAINER = "GoSwiftUnitTest_segments"
 	VERSIONS_CONTAINER = "GoSwiftUnitTestVersions"
 	CURRENT_CONTAINER  = "GoSwiftUnitTestCurrent"
 	OBJECT             = "test_object"
@@ -1563,6 +1564,12 @@ func TestQueryInfo(t *testing.T) {
 }
 
 func TestDLOCreate(t *testing.T) {
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	opts := swift.LargeObjectOpts{
 		Container:   CONTAINER,
 		ObjectName:  OBJECT,
@@ -1708,9 +1715,55 @@ func TestDLOMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	if err := c.ContainerDelete(SEGMENTS_CONTAINER); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDLONoSegmentContainer(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:        CONTAINER,
+		ObjectName:       OBJECT,
+		ContentType:      "image/jpeg",
+		SegmentContainer: CONTAINER,
+	}
+	out, err := c.DynamicLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+
+	err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSLOCreate(t *testing.T) {
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	opts := swift.LargeObjectOpts{
 		Container:   CONTAINER,
 		ObjectName:  OBJECT,
@@ -1822,6 +1875,52 @@ func TestSLOMove(t *testing.T) {
 	}
 
 	err = c.StaticLargeObjectDelete(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.ContainerDelete(SEGMENTS_CONTAINER); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSLONoSegmentContainer(t *testing.T) {
+	headers := swift.Headers{}
+	err := c.ContainerCreate(CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := swift.LargeObjectOpts{
+		Container:        CONTAINER,
+		ObjectName:       OBJECT,
+		ContentType:      "image/jpeg",
+		SegmentContainer: CONTAINER,
+	}
+	out, err := c.StaticLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+
+	err = c.StaticLargeObjectDelete(CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}

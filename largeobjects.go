@@ -1,7 +1,6 @@
 package swift
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
@@ -20,17 +19,18 @@ var NotLargeObject = errors.New("Not a large object")
 
 // LargeObjectCreateFile represents an open static or dynamic large object
 type LargeObjectCreateFile struct {
-	conn          *Connection
-	container     string
-	objectName    string
-	currentLength int64
-	filePos       int64
-	chunkSize     int64
-	prefix        string
-	contentType   string
-	checkHash     bool
-	segments      []Object
-	headers       Headers
+	conn             *Connection
+	container        string
+	objectName       string
+	currentLength    int64
+	filePos          int64
+	chunkSize        int64
+	segmentContainer string
+	prefix           string
+	contentType      string
+	checkHash        bool
+	segments         []Object
+	headers          Headers
 }
 
 func max(a int64, b int64) int64 {
@@ -76,52 +76,62 @@ func isManifest(headers Headers) bool {
 	return isSLO || isDLO
 }
 
-func (c *Connection) getAllSegments(container string, path string, headers Headers) (segments []Object, err error) {
+func (c *Connection) getAllSegments(container string, path string, headers Headers) (string, []Object, error) {
 	if manifest, isDLO := headers["X-Object-Manifest"]; isDLO {
-		container, segmentPath := parseFullPath(manifest)
-		segments, err = c.ObjectsAll(container, &ObjectsOpts{Prefix: segmentPath})
-		if err != nil {
-			return nil, nil
-		}
-	} else if _, isSLO := headers["X-Static-Large-Object"]; isSLO {
-		var segmentList []swiftSegment
+		segmentContainer, segmentPath := parseFullPath(manifest)
+		segments, err := c.ObjectsAll(segmentContainer, &ObjectsOpts{Prefix: segmentPath})
+		return segmentContainer, segments, err
+	}
+
+	if _, isSLO := headers["X-Static-Large-Object"]; isSLO {
+		var (
+			segmentList      []swiftSegment
+			segments         []Object
+			segPath          string
+			segmentContainer string
+		)
 
 		values := url.Values{}
 		values.Set("multipart-manifest", "get")
 
 		file, _, err := c.objectOpen(container, path, true, nil, values)
 		if err != nil {
-			return nil, err
+			return "", nil, err
 		}
 
 		content, err := ioutil.ReadAll(file)
 		if err != nil {
-			return nil, err
+			return "", nil, err
 		}
 
 		json.Unmarshal(content, &segmentList)
 		for _, segment := range segmentList {
-			_, segPath := parseFullPath(segment.Name[1:])
+			segmentContainer, segPath = parseFullPath(segment.Name[1:])
 			segments = append(segments, Object{
 				Name:  segPath,
 				Bytes: segment.Bytes,
 				Hash:  segment.Hash,
 			})
 		}
+
+		return segmentContainer, segments, nil
 	}
-	return segments, nil
+
+	return "", nil, NotLargeObject
 }
 
 // LargeObjectOpts describes how a large object should be created
 type LargeObjectOpts struct {
-	Container   string  // Name of container to place object
-	ObjectName  string  // Name of object
-	Flags       int     // Creation flags
-	CheckHash   bool    // If set Check the hash
-	Hash        string  // If set use this hash to check
-	ContentType string  // Content-Type of the object
-	Headers     Headers // Additional headers to upload the object with
-	ChunkSize   int64   // Size of chunks of the object, defaults to 10MB if not set
+	Container        string  // Name of container to place object
+	ObjectName       string  // Name of object
+	Flags            int     // Creation flags
+	CheckHash        bool    // If set Check the hash
+	Hash             string  // If set use this hash to check
+	ContentType      string  // Content-Type of the object
+	Headers          Headers // Additional headers to upload the object with
+	ChunkSize        int64   // Size of chunks of the object, defaults to 10MB if not set
+	SegmentContainer string  // Name of the container to place segments
+	SegmentPrefix    string  // Prefix to use for the segments
 }
 
 // LargeObjectCreate creates a large object at opts.Container, opts.ObjectName.
@@ -131,16 +141,22 @@ type LargeObjectOpts struct {
 //   os.APPEND - write at the end of the large object
 func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreateFile, error) {
 	var (
-		segmentPath   string
-		segments      []Object
-		currentLength int64
+		segmentPath      string
+		segmentContainer string
+		segments         []Object
+		currentLength    int64
+		err              error
 	)
 
-	info, headers, err := c.Object(opts.Container, opts.ObjectName)
+	if opts.SegmentPrefix != "" {
+		segmentPath = opts.SegmentPrefix
+	} else if segmentPath, err = swiftSegmentPath(opts.ObjectName); err != nil {
+		return nil, err
+	}
 
-	if err == nil {
+	if info, headers, err := c.Object(opts.Container, opts.ObjectName); err == nil {
 		if isManifest(headers) {
-			segments, err = c.getAllSegments(opts.Container, opts.ObjectName, headers)
+			segmentContainer, segments, err = c.getAllSegments(opts.Container, opts.ObjectName, headers)
 			if err != nil {
 				return nil, err
 			}
@@ -148,9 +164,6 @@ func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreat
 				segmentPath = gopath.Dir(segments[0].Name)
 			}
 		} else {
-			if segmentPath, err = swiftSegmentPath(opts.ObjectName); err != nil {
-				return nil, err
-			}
 			if err := c.ObjectMove(opts.Container, opts.ObjectName, opts.Container, getSegment(segmentPath, 1)); err != nil {
 				return nil, err
 			}
@@ -158,25 +171,32 @@ func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreat
 		}
 		if opts.Flags&os.O_TRUNC != 0 {
 			c.LargeObjectDelete(opts.Container, opts.ObjectName)
+		} else {
+			currentLength = info.Bytes
 		}
-		currentLength = info.Bytes
-	} else if err == ObjectNotFound {
-		if segmentPath, err = swiftSegmentPath(opts.ObjectName); err != nil {
-			return nil, err
-		}
-	} else {
+	} else if err != ObjectNotFound {
 		return nil, err
 	}
 
+	// segmentContainer is not empty when the manifest already existed
+	if segmentContainer == "" {
+		if opts.SegmentContainer != "" {
+			segmentContainer = opts.SegmentContainer
+		} else {
+			segmentContainer = opts.Container + "_segments"
+		}
+	}
+
 	file := &LargeObjectCreateFile{
-		conn:          c,
-		checkHash:     opts.CheckHash,
-		container:     opts.Container,
-		objectName:    opts.ObjectName,
-		chunkSize:     opts.ChunkSize,
-		prefix:        segmentPath,
-		segments:      segments,
-		currentLength: currentLength,
+		conn:             c,
+		checkHash:        opts.CheckHash,
+		container:        opts.Container,
+		objectName:       opts.ObjectName,
+		chunkSize:        opts.ChunkSize,
+		segmentContainer: segmentContainer,
+		prefix:           segmentPath,
+		segments:         segments,
+		currentLength:    currentLength,
 	}
 
 	if file.chunkSize == 0 {
@@ -191,28 +211,30 @@ func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreat
 }
 
 // LargeObjectDelete deletes the large object named by container, path
-func (c *Connection) LargeObjectDelete(container string, path string) error {
-	info, headers, err := c.Object(container, path)
+func (c *Connection) LargeObjectDelete(container string, objectName string) error {
+	_, headers, err := c.Object(container, objectName)
 	if err != nil {
 		return err
 	}
 
-	var objects []Object
+	var objects [][]string
 	if isManifest(headers) {
-		segments, err := c.getAllSegments(container, info.Name, headers)
+		segmentContainer, segments, err := c.getAllSegments(container, objectName, headers)
 		if err != nil {
 			return err
 		}
-		objects = append(objects, segments...)
+		for _, obj := range segments {
+			objects = append(objects, []string{segmentContainer, obj.Name})
+		}
 	}
-	objects = append(objects, info)
+	objects = append(objects, []string{container, objectName})
 
-	if false && len(objects) > 0 {
+	if c.BulkDeleteSupport && len(objects) > 0 {
 		filenames := make([]string, len(objects))
 		for i, obj := range objects {
-			filenames[i] = obj.Name
+			filenames[i] = obj[0] + "/" + obj[1]
 		}
-		_, err = c.BulkDelete(container, filenames)
+		_, err = c.doBulkDelete(filenames)
 		// Don't fail on ObjectNotFound because eventual consistency
 		// makes this situation normal.
 		if err != nil && err != Forbidden && err != ObjectNotFound {
@@ -220,7 +242,7 @@ func (c *Connection) LargeObjectDelete(container string, path string) error {
 		}
 	} else {
 		for _, obj := range objects {
-			if err := c.ObjectDelete(container, obj.Name); err != nil {
+			if err := c.ObjectDelete(obj[0], obj[1]); err != nil {
 				return err
 			}
 		}
@@ -234,38 +256,13 @@ func (c *Connection) LargeObjectDelete(container string, path string) error {
 // that have the prefix as indicated by the manifest.
 // If the object is a Static Large Object (SLO), it retrieves the JSON content
 // of the manifest and return all the segments of it.
-func (c *Connection) LargeObjectGetSegments(container string, path string) (segments []Object, err error) {
+func (c *Connection) LargeObjectGetSegments(container string, path string) (string, []Object, error) {
 	_, headers, err := c.Object(container, path)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	if manifest, isDLO := headers["X-Object-Manifest"]; isDLO {
-		container, segmentPath := parseFullPath(manifest)
-		return c.ObjectsAll(container, &ObjectsOpts{Prefix: segmentPath})
-	}
-
-	if _, isSLO := headers["X-Static-Large-Object"]; isSLO {
-		var buf bytes.Buffer
-		var segmentList []swiftSegment
-		headers := make(Headers)
-		headers["X-Static-Large-Object"] = "True"
-		if _, err := c.ObjectGet(container, path, &buf, true, headers); err != nil {
-			return nil, err
-		}
-		json.Unmarshal(buf.Bytes(), &segmentList)
-		for _, segment := range segmentList {
-			_, segPath := parseFullPath(segment.Name[1:])
-			segments = append(segments, Object{
-				Name:  segPath,
-				Bytes: segment.Bytes,
-				Hash:  segment.Hash,
-			})
-		}
-		return segments, nil
-	}
-
-	return nil, NotLargeObject
+	return c.getAllSegments(container, path, headers)
 }
 
 // Seek sets the offset for the next write operation

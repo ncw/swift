@@ -112,6 +112,8 @@ type Connection struct {
 	TenantDomainId string            // Id of the tenant's domain (v3 auth only), only needed if it differs the from user domain
 	TrustId        string            // Id of the trust (v3 auth only)
 	Transport      http.RoundTripper `json:"-" xml:"-"` // Optional specialised http.Transport (eg. for Google Appengine)
+	// BulkDeleteSupport is filled after QueryInfo is called
+	BulkDeleteSupport bool
 	// These are filled in after Authenticate is called as are the defaults for above
 	StorageUrl string
 	AuthToken  string
@@ -424,6 +426,7 @@ func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
 		err = readJson(resp, &infos)
 		return infos, err
 	}
+	_, c.BulkDeleteSupport = infos["bulk_delete"]
 	return nil, err
 }
 
@@ -1599,19 +1602,10 @@ type BulkDeleteResult struct {
 	Headers        Headers          // Response HTTP headers.
 }
 
-// BulkDelete deletes multiple objectNames from container in one operation.
-//
-// Some servers may not accept bulk-delete requests since bulk-delete is
-// an optional feature of swift - these will return the Forbidden error.
-//
-// See also:
-// * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-bulk-delete.html
-// * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Bulk_Delete-d1e2338.html
-func (c *Connection) BulkDelete(container string, objectNames []string) (result BulkDeleteResult, err error) {
+func (c *Connection) doBulkDelete(objects []string) (result BulkDeleteResult, err error) {
 	var buffer bytes.Buffer
-	for _, s := range objectNames {
-		buffer.WriteString(fmt.Sprintf("/%s/%s\n", container,
-			url.QueryEscape(s)))
+	for _, s := range objects {
+		buffer.WriteString(url.QueryEscape(s) + "\n")
 	}
 	resp, headers, err := c.storage(RequestOpts{
 		Operation:  "DELETE",
@@ -1650,6 +1644,22 @@ func (c *Connection) BulkDelete(container string, objectNames []string) (result 
 	}
 	result.Errors = el
 	return
+}
+
+// BulkDelete deletes multiple objectNames from container in one operation.
+//
+// Some servers may not accept bulk-delete requests since bulk-delete is
+// an optional feature of swift - these will return the Forbidden error.
+//
+// See also:
+// * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-bulk-delete.html
+// * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Bulk_Delete-d1e2338.html
+func (c *Connection) BulkDelete(container string, objectNames []string) (result BulkDeleteResult, err error) {
+	fullPaths := make([]string, len(objectNames))
+	for i, name := range objectNames {
+		fullPaths[i] = fmt.Sprintf("/%s/%s", container, name)
+	}
+	return c.doBulkDelete(fullPaths)
 }
 
 // BulkUploadResult stores results of BulkUpload().
