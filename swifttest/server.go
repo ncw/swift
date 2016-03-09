@@ -506,7 +506,7 @@ func (objr objectResource) get(a *action) interface{} {
 		size := 0
 		sum := md5.New()
 		for _, segment := range segmentList {
-			components := strings.SplitN(segment.Name, "/", 2)
+			components := strings.SplitN(segment.Name[1:], "/", 2)
 			a.user.RLock()
 			segContainer := a.user.Containers[components[0]]
 			a.user.RUnlock()
@@ -605,7 +605,7 @@ func (objr objectResource) put(a *action) interface{} {
 		var segments []segment
 		json.Unmarshal(data, &segments)
 		for i, _ := range segments {
-			segments[i].Name = segments[i].Path
+			segments[i].Name = "/" + segments[i].Path
 			segments[i].Path = ""
 			segments[i].Hash = segments[i].Etag
 			segments[i].Etag = ""
