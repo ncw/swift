@@ -86,12 +86,12 @@ func (c *Connection) StaticLargeObjectMove(srcContainer string, srcObjectName st
 		return err
 	}
 
-	segments, err := c.getAllSegments(srcContainer, srcObjectName, headers)
+	container, segments, err := c.getAllSegments(srcContainer, srcObjectName, headers)
 	if err != nil {
 		return err
 	}
 
-	if err := c.createSLOManifest(dstContainer, dstObjectName, info.ContentType, segments); err != nil {
+	if err := c.createSLOManifest(dstContainer, dstObjectName, info.ContentType, container, segments); err != nil {
 		return err
 	}
 
@@ -103,10 +103,10 @@ func (c *Connection) StaticLargeObjectMove(srcContainer string, srcObjectName st
 }
 
 // createSLOManifest creates a static large object manifest
-func (c *Connection) createSLOManifest(container string, path string, contentType string, segments []Object) error {
+func (c *Connection) createSLOManifest(container string, path string, contentType string, segmentContainer string, segments []Object) error {
 	sloSegments := make([]swiftSegment, len(segments))
 	for i, segment := range segments {
-		sloSegments[i].Path = fmt.Sprintf("%s/%s", container, segment.Name)
+		sloSegments[i].Path = fmt.Sprintf("%s/%s", segmentContainer, segment.Name)
 		sloSegments[i].Etag = segment.Hash
 		sloSegments[i].Size = segment.Bytes
 	}
@@ -188,7 +188,7 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 	multi = io.MultiReader(readers...)
 
 	writeSegment := func(segment string) (finished bool, bytesRead int64, err error) {
-		currentSegment, err := file.conn.ObjectCreate(file.container, segment, false, "", file.contentType, nil)
+		currentSegment, err := file.conn.ObjectCreate(file.segmentContainer, segment, false, "", file.contentType, nil)
 		if err != nil {
 			return false, bytesRead, err
 		}
@@ -210,7 +210,7 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 
 				hexHash := hex.EncodeToString(segmentHash.Sum(nil))
 				hash.Write([]byte(hexHash))
-				infos, _, _ := file.conn.Object(file.container, segment)
+				infos, _, _ := file.conn.Object(file.segmentContainer, segment)
 				if partNumber > len(file.segments) {
 					file.segments = append(file.segments, Object{
 						Name: segment,
@@ -276,7 +276,7 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 	waitingTime := readAfterWriteWait
 	endTime := time.Now().Add(readAfterWriteTimeout)
 	for {
-		if err = file.conn.createSLOManifest(file.container, file.objectName, file.contentType, file.segments); err == nil {
+		if err = file.conn.createSLOManifest(file.container, file.objectName, file.contentType, file.segmentContainer, file.segments); err == nil {
 			break
 		}
 		if time.Now().Add(waitingTime).After(endTime) {
@@ -291,7 +291,7 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 
 // Close satisfies the io.Closer interface
 func (file *StaticLargeObjectCreateFile) Close() error {
-	if err := file.conn.createSLOManifest(file.container, file.objectName, file.contentType, file.segments); err != nil {
+	if err := file.conn.createSLOManifest(file.container, file.objectName, file.contentType, file.segmentContainer, file.segments); err != nil {
 		return err
 	}
 
