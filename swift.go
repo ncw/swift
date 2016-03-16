@@ -1428,13 +1428,13 @@ var _ io.Seeker = &ObjectOpenFile{}
 // will also check the length returned. No checking will be done if
 // you don't read all the contents.
 //
-// Note that objects with X-Object-Manifest set won't ever have their
-// md5sum's checked as the md5sum reported on the object is actually
-// the md5sum of the md5sums of the parts. This isn't very helpful to
-// detect a corrupted download as the size of the parts aren't known
-// without doing more operations.  If you want to ensure integrity of
-// an object with a manifest then you will need to download everything
-// in the manifest separately.
+// Note that objects with X-Object-Manifest or X-Static-Large-Object
+// set won't ever have their md5sum's checked as the md5sum reported
+// on the object is actually the md5sum of the md5sums of the
+// parts. This isn't very helpful to detect a corrupted download as
+// the size of the parts aren't known without doing more operations.
+// If you want to ensure integrity of an object with a manifest then
+// you will need to download everything in the manifest separately.
 //
 // headers["Content-Type"] will give the content type if desired.
 func (c *Connection) ObjectOpen(container string, objectName string, checkHash bool, h Headers) (file *ObjectOpenFile, headers Headers, err error) {
@@ -1449,8 +1449,8 @@ func (c *Connection) ObjectOpen(container string, objectName string, checkHash b
 	if err != nil {
 		return
 	}
-	// Can't check MD5 on an object with X-Object-Manifest set
-	if checkHash && headers["X-Object-Manifest"] != "" {
+	// Can't check MD5 on an object with X-Object-Manifest or X-Static-Large-Object set
+	if checkHash && (headers["X-Object-Manifest"] != "" || headers["X-Static-Large-Object"] != "") {
 		// log.Printf("swift: turning off md5 checking on object with manifest %v", objectName)
 		checkHash = false
 	}
