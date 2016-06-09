@@ -11,7 +11,7 @@ import (
 
 func ExampleConnection() {
 	// Create a v1 auth connection
-	c := swift.Connection{
+	c := &swift.Connection{
 		// This should be your username
 		UserName: "user",
 		// This should be your api key
@@ -36,7 +36,7 @@ func ExampleConnection() {
 	// ------ or alternatively create a v2 connection ------
 
 	// Create a v2 auth connection
-	c = swift.Connection{
+	c = &swift.Connection{
 		// This is the sub user for the storage - eg "admin"
 		UserName: "user",
 		// This should be your api key
