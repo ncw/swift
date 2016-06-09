@@ -90,6 +90,7 @@ func makeConnection() (*swift.Connection, error) {
 		Proxy:               http.ProxyFromEnvironment,
 		MaxIdleConnsPerHost: 2048,
 	}
+	swift.SetExpectContinueTimeout(transport)
 	if Insecure == "1" {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
@@ -141,6 +142,7 @@ func TestTransport(t *testing.T) {
 			MaxIdleConnsPerHost: 2048,
 		},
 	}
+	swift.SetExpectContinueTimeout(&tr.Transport)
 
 	Insecure := os.Getenv("SWIFT_AUTH_INSECURE")
 
