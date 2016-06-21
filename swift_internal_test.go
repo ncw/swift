@@ -404,3 +404,25 @@ func TestInternalContainerNames(t *testing.T) {
 	testContainerNames(t, "one\n", []string{"one"})
 	testContainerNames(t, "one\ntwo\nthree\n", []string{"one", "two", "three"})
 }
+
+func TestInternalObjectPutBytes(t *testing.T) {
+	server.AddCheck(t).In(Headers{
+		"User-Agent":     DefaultUserAgent,
+		"X-Auth-Token":   AUTH_TOKEN,
+		"Content-Length": "5",
+		"Content-Type":   "text/plain",
+	}).Rx("12345")
+	defer server.Finished()
+	c.ObjectPutBytes("container", "object", []byte{'1', '2', '3', '4', '5'}, "text/plain")
+}
+
+func TestInternalObjectPutString(t *testing.T) {
+	server.AddCheck(t).In(Headers{
+		"User-Agent":     DefaultUserAgent,
+		"X-Auth-Token":   AUTH_TOKEN,
+		"Content-Length": "5",
+		"Content-Type":   "text/plain",
+	}).Rx("12345")
+	defer server.Finished()
+	c.ObjectPutString("container", "object", "12345", "text/plain")
+}

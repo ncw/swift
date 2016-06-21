@@ -1274,7 +1274,8 @@ func (c *Connection) ObjectPut(container string, objectName string, contents io.
 // This is a simplified interface which checks the MD5.
 func (c *Connection) ObjectPutBytes(container string, objectName string, contents []byte, contentType string) (err error) {
 	buf := bytes.NewBuffer(contents)
-	_, err = c.ObjectPut(container, objectName, buf, true, "", contentType, nil)
+	h := Headers{"Content-Length": strconv.Itoa(len(contents))}
+	_, err = c.ObjectPut(container, objectName, buf, true, "", contentType, h)
 	return
 }
 
@@ -1283,7 +1284,8 @@ func (c *Connection) ObjectPutBytes(container string, objectName string, content
 // This is a simplified interface which checks the MD5
 func (c *Connection) ObjectPutString(container string, objectName string, contents string, contentType string) (err error) {
 	buf := strings.NewReader(contents)
-	_, err = c.ObjectPut(container, objectName, buf, true, "", contentType, nil)
+	h := Headers{"Content-Length": strconv.Itoa(len(contents))}
+	_, err = c.ObjectPut(container, objectName, buf, true, "", contentType, h)
 	return
 }
 
