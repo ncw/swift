@@ -29,15 +29,15 @@ var readAfterWriteWait = 200 * time.Millisecond
 
 type swiftSegment struct {
 	Path string `json:"path,omitempty"`
-	Hash string `json:"hash,omitempty"`
+	Etag string `json:"etag,omitempty"`
 	Size int64  `json:"size_bytes,omitempty"`
-	// When uploading a manifest, the attributes must be named `path`, `hash` and `size_bytes`
+	// When uploading a manifest, the attributes must be named `path`, `etag` and `size_bytes`
 	// but when querying the JSON content of a manifest with the `multipart-manifest=get`
-	// parameter, Swift names those attributes `name`, `etag` and `bytes`.
+	// parameter, Swift names those attributes `name`, `hash` and `bytes`.
 	// We use all the different attributes names in this structure to be able to use
 	// the same structure for both uploading and retrieving.
 	Name         string `json:"name,omitempty"`
-	Etag         string `json:"etag,omitempty"`
+	Hash         string `json:"hash,omitempty"`
 	Bytes        int64  `json:"bytes,omitempty"`
 	ContentType  string `json:"content_type,omitempty"`
 	LastModified string `json:"last_modified,omitempty"`
