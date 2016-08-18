@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -26,6 +27,8 @@ var readAfterWriteTimeout = 15 * time.Second
 
 // readAfterWriteWait defines the time to sleep between two retries
 var readAfterWriteWait = 200 * time.Millisecond
+
+var SLONotSupported = errors.New("SLO not supported")
 
 type swiftSegment struct {
 	Path string `json:"path,omitempty"`
@@ -56,6 +59,13 @@ var (
 // io.ReaderFrom.  The flags are as passed to the LargeObjectCreate
 // method.
 func (c *Connection) StaticLargeObjectCreateFile(opts *LargeObjectOpts) (*StaticLargeObjectCreateFile, error) {
+	info, err := c.cachedQueryInfo()
+	if err != nil {
+		return nil, err
+	}
+	if !info.SupportsSLO() {
+		return nil, SLONotSupported
+	}
 	lo, err := c.LargeObjectCreate(opts)
 	if err != nil {
 		return nil, err
@@ -76,11 +86,25 @@ func (c *Connection) StaticLargeObjectCreate(opts *LargeObjectOpts) (*StaticLarg
 
 // StaticLargeObjectDelete deletes a static large object and all of its segments.
 func (c *Connection) StaticLargeObjectDelete(container string, path string) error {
+	info, err := c.cachedQueryInfo()
+	if err != nil {
+		return err
+	}
+	if !info.SupportsSLO() {
+		return SLONotSupported
+	}
 	return c.LargeObjectDelete(container, path)
 }
 
 // StaticLargeObjectMove moves a static large object from srcContainer, srcObjectName to dstContainer, dstObjectName
 func (c *Connection) StaticLargeObjectMove(srcContainer string, srcObjectName string, dstContainer string, dstObjectName string) error {
+	swiftInfo, err := c.cachedQueryInfo()
+	if err != nil {
+		return err
+	}
+	if !swiftInfo.SupportsSLO() {
+		return SLONotSupported
+	}
 	info, headers, err := c.Object(srcContainer, srcObjectName)
 	if err != nil {
 		return err

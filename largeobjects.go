@@ -229,7 +229,12 @@ func (c *Connection) LargeObjectDelete(container string, objectName string) erro
 	}
 	objects = append(objects, []string{container, objectName})
 
-	if c.BulkDeleteSupport && len(objects) > 0 {
+	info, err := c.cachedQueryInfo()
+	if err != nil {
+		return err
+	}
+
+	if info.SupportsBulkDelete() && len(objects) > 0 {
 		filenames := make([]string, len(objects))
 		for i, obj := range objects {
 			filenames[i] = obj[0] + "/" + obj[1]
