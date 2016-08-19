@@ -4,11 +4,8 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"net/url"
 	"os"
 	gopath "path"
 	"strings"
@@ -79,44 +76,12 @@ func isManifest(headers Headers) bool {
 func (c *Connection) getAllSegments(container string, path string, headers Headers) (string, []Object, error) {
 	if manifest, isDLO := headers["X-Object-Manifest"]; isDLO {
 		segmentContainer, segmentPath := parseFullPath(manifest)
-		segments, err := c.ObjectsAll(segmentContainer, &ObjectsOpts{Prefix: segmentPath})
+		segments, err := c.getAllDLOSegments(segmentContainer, segmentPath)
 		return segmentContainer, segments, err
 	}
-
 	if _, isSLO := headers["X-Static-Large-Object"]; isSLO {
-		var (
-			segmentList      []swiftSegment
-			segments         []Object
-			segPath          string
-			segmentContainer string
-		)
-
-		values := url.Values{}
-		values.Set("multipart-manifest", "get")
-
-		file, _, err := c.objectOpen(container, path, true, nil, values)
-		if err != nil {
-			return "", nil, err
-		}
-
-		content, err := ioutil.ReadAll(file)
-		if err != nil {
-			return "", nil, err
-		}
-
-		json.Unmarshal(content, &segmentList)
-		for _, segment := range segmentList {
-			segmentContainer, segPath = parseFullPath(segment.Name[1:])
-			segments = append(segments, Object{
-				Name:  segPath,
-				Bytes: segment.Bytes,
-				Hash:  segment.Hash,
-			})
-		}
-
-		return segmentContainer, segments, nil
+		return c.getAllSLOSegments(container, path)
 	}
-
 	return "", nil, NotLargeObject
 }
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"strconv"
@@ -320,4 +321,38 @@ func (file *StaticLargeObjectCreateFile) Close() error {
 	}
 
 	return nil
+}
+
+func (c *Connection) getAllSLOSegments(container, path string) (string, []Object, error) {
+	var (
+		segmentList      []swiftSegment
+		segments         []Object
+		segPath          string
+		segmentContainer string
+	)
+
+	values := url.Values{}
+	values.Set("multipart-manifest", "get")
+
+	file, _, err := c.objectOpen(container, path, true, nil, values)
+	if err != nil {
+		return "", nil, err
+	}
+
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		return "", nil, err
+	}
+
+	json.Unmarshal(content, &segmentList)
+	for _, segment := range segmentList {
+		segmentContainer, segPath = parseFullPath(segment.Name[1:])
+		segments = append(segments, Object{
+			Name:  segPath,
+			Bytes: segment.Bytes,
+			Hash:  segment.Hash,
+		})
+	}
+
+	return segmentContainer, segments, nil
 }

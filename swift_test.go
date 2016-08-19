@@ -23,6 +23,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
@@ -1729,6 +1730,62 @@ func TestDLONoSegmentContainer(t *testing.T) {
 		ObjectName:       OBJECT,
 		ContentType:      "image/jpeg",
 		SegmentContainer: CONTAINER,
+	}
+	out, err := c.DynamicLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+
+	err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDLOCreateMissingSegmentsInList(t *testing.T) {
+	if srv == nil {
+		t.Skipf("This test only runs with the fake swift server as it's needed to simulate eventual consistency problems.")
+		return
+	}
+
+	listURL := "/v1/AUTH_" + swifttest.TEST_ACCOUNT + "/" + SEGMENTS_CONTAINER
+	srv.SetOverride(listURL, func(w http.ResponseWriter, r *http.Request, recorder *httptest.ResponseRecorder) {
+		for k, v := range recorder.HeaderMap {
+			w.Header().Set(k, v[0])
+		}
+		w.WriteHeader(recorder.Code)
+		w.Write([]byte("null\n"))
+	})
+	defer srv.UnsetOverride(listURL)
+
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
 	}
 	out, err := c.DynamicLargeObjectCreate(&opts)
 	if err != nil {

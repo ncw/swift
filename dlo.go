@@ -106,7 +106,7 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 	readers := []io.Reader{}
 	hash := md5.New()
 
-	file.segments, err = file.conn.ObjectsAll(file.segmentContainer, &ObjectsOpts{Prefix: file.prefix})
+	file.segments, err = file.conn.getAllDLOSegments(file.segmentContainer, file.prefix)
 	if err != nil {
 		return 0, err
 	}
@@ -221,4 +221,54 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 // Close satisfies the io.Closer interface
 func (file *DynamicLargeObjectCreateFile) Close() error {
 	return file.conn.createDLOManifest(file.container, file.objectName, file.segmentContainer+"/"+file.prefix, file.contentType)
+}
+
+func (c *Connection) getAllDLOSegments(segmentContainer, segmentPath string) ([]Object, error) {
+	//a simple container listing works 99.9% of the time
+	segments, err := c.ObjectsAll(segmentContainer, &ObjectsOpts{Prefix: segmentPath})
+	if err != nil {
+		return nil, err
+	}
+
+	hasObjectName := make(map[string]struct{})
+	for _, segment := range segments {
+		hasObjectName[segment.Name] = struct{}{}
+	}
+
+	//The container listing might be outdated (i.e. not contain all existing
+	//segment objects yet) because of temporary inconsistency (Swift is only
+	//eventually consistent!). Check its completeness.
+	segmentNumber := 0
+	for {
+		segmentNumber++
+		segmentName := getSegment(segmentPath, segmentNumber)
+		if _, seen := hasObjectName[segmentName]; seen {
+			continue
+		}
+
+		//This segment is missing in the container listing. Use a more reliable
+		//request to check its existence. (HEAD requests on segments are
+		//guaranteed to return the correct metadata, except for the pathological
+		//case of an outage of large parts of the Swift cluster or its network,
+		//since every segment is only written once.)
+		segment, _, err := c.Object(segmentContainer, segmentName)
+		switch err {
+		case nil:
+			//found new segment -> add it in the correct position and keep
+			//going, more might be missing
+			if segmentNumber <= len(segments) {
+				segments = append(segments[:segmentNumber], segments[segmentNumber-1:]...)
+				segments[segmentNumber-1] = segment
+			} else {
+				segments = append(segments, segment)
+			}
+			continue
+		case ObjectNotFound:
+			//This segment is missing. Since we upload segments sequentially,
+			//there won't be any more segments after it.
+			return segments, nil
+		default:
+			return nil, err //unexpected error
+		}
+	}
 }
