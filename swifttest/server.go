@@ -21,6 +21,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"path"
 	"regexp"
@@ -40,6 +41,8 @@ const (
 	TEST_ACCOUNT = "swifttest"
 )
 
+type HandlerOverrideFunc func(w http.ResponseWriter, r *http.Request, recorder *httptest.ResponseRecorder)
+
 type SwiftServer struct {
 	sync.RWMutex
 	t        *testing.T
@@ -50,6 +53,7 @@ type SwiftServer struct {
 	URL      string
 	Accounts map[string]*account
 	Sessions map[string]*session
+	override map[string]HandlerOverrideFunc
 }
 
 // The Folder type represents a container stored in an account
@@ -604,7 +608,7 @@ func (objr objectResource) put(a *action) interface{} {
 
 		var segments []segment
 		json.Unmarshal(data, &segments)
-		for i, _ := range segments {
+		for i := range segments {
 			segments[i].Name = "/" + segments[i].Path
 			segments[i].Path = ""
 			segments[i].Hash = segments[i].Etag
@@ -739,6 +743,15 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	// ignore error from ParseForm as it's usually spurious.
 	req.ParseForm()
 
+	if fn := s.override[req.URL.Path]; fn != nil {
+		originalRW := w
+		recorder := httptest.NewRecorder()
+		w = recorder
+		defer func() {
+			fn(originalRW, req, recorder)
+		}()
+	}
+
 	if DEBUG {
 		log.Printf("swifttest %q %q", req.Method, req.URL)
 	}
@@ -793,6 +806,11 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 			},
 			"tempurl": map[string]interface{}{
 				"methods": []string{"GET", "HEAD", "PUT"},
+			},
+			"slo": map[string]interface{}{
+				"max_manifest_segments": 1000,
+				"max_manifest_size":     2097152,
+				"min_segment_size":      1,
 			},
 		})
 		return
@@ -868,6 +886,14 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+}
+
+func (s *SwiftServer) SetOverride(path string, fn HandlerOverrideFunc) {
+	s.override[path] = fn
+}
+
+func (s *SwiftServer) UnsetOverride(path string) {
+	delete(s.override, path)
 }
 
 func jsonMarshal(w io.Writer, x interface{}) {
@@ -1057,6 +1083,7 @@ func NewSwiftServer(address string) (*SwiftServer, error) {
 		URL:      "http://" + l.Addr().String() + "/v1",
 		Accounts: make(map[string]*account),
 		Sessions: make(map[string]*session),
+		override: make(map[string]HandlerOverrideFunc),
 	}
 
 	server.Accounts[TEST_ACCOUNT] = &account{
