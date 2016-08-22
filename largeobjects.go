@@ -9,10 +9,17 @@ import (
 	"os"
 	gopath "path"
 	"strings"
+	"time"
 )
 
 // NotLargeObject is returned if an operation is performed on an object which isn't large.
 var NotLargeObject = errors.New("Not a large object")
+
+// readAfterWriteTimeout defines the time we wait before an object appears after having been uploaded
+var readAfterWriteTimeout = 15 * time.Second
+
+// readAfterWriteWait defines the time to sleep between two retries
+var readAfterWriteWait = 200 * time.Millisecond
 
 // LargeObjectCreateFile represents an open static or dynamic large object
 type LargeObjectCreateFile struct {
@@ -251,4 +258,26 @@ func (file *LargeObjectCreateFile) Seek(offset int64, whence int) (int64, error)
 		return -1, fmt.Errorf("negative offset")
 	}
 	return file.filePos, nil
+}
+
+func (file *LargeObjectCreateFile) waitForSegmentsToShowUp() error {
+	var err error
+	waitingTime := readAfterWriteWait
+	endTimer := time.After(readAfterWriteTimeout)
+	for {
+		var info Object
+		if info, _, err = file.conn.Object(file.container, file.objectName); err == nil {
+			if info.Bytes == file.currentLength {
+				break
+			}
+			err = fmt.Errorf("Timeout expired while waiting for segments of %s to show up", file.objectName)
+		}
+		select {
+		case <-endTimer:
+			return err
+		case <-time.After(waitingTime):
+			waitingTime *= 2
+		}
+	}
+	return err
 }

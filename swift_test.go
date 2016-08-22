@@ -1586,7 +1586,10 @@ func TestDLOCreate(t *testing.T) {
 	buf := &bytes.Buffer{}
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
-		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = out.Close()
 	if err != nil {
@@ -1616,7 +1619,10 @@ func TestDLOInsert(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	multi := io.MultiWriter(buf, out)
-	fmt.Fprintf(multi, "%d%s\n", 0, CONTENTS)
+	_, err = fmt.Fprintf(multi, "%d%s\n", 0, CONTENTS)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
 	err = out.Close()
 	if err != nil {
@@ -1649,7 +1655,10 @@ func TestDLOAppend(t *testing.T) {
 	buf := bytes.NewBuffer([]byte(contents))
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
-		fmt.Fprintf(multi, "%d %s\n", i+10, CONTENTS)
+		_, err = fmt.Fprintf(multi, "%d %s\n", i+10, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = out.Close()
 	if err != nil {
@@ -1680,7 +1689,10 @@ func TestDLOTruncate(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	multi := io.MultiWriter(buf, out)
-	fmt.Fprintf(multi, "%s", CONTENTS)
+	_, err = fmt.Fprintf(multi, "%s", CONTENTS)
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = out.Close()
 	if err != nil {
 		t.Error(err)
@@ -1739,7 +1751,10 @@ func TestDLONoSegmentContainer(t *testing.T) {
 	buf := &bytes.Buffer{}
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
-		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = out.Close()
 	if err != nil {
@@ -1795,7 +1810,10 @@ func TestDLOCreateMissingSegmentsInList(t *testing.T) {
 	buf := &bytes.Buffer{}
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
-		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = out.Close()
 	if err != nil {
@@ -1836,7 +1854,10 @@ func TestSLOCreate(t *testing.T) {
 	buf := &bytes.Buffer{}
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
-		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = out.Close()
 	if err != nil {
@@ -1865,7 +1886,10 @@ func TestSLOInsert(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	multi := io.MultiWriter(buf, out)
-	fmt.Fprintf(multi, "%d%s\n", 0, CONTENTS)
+	_, err = fmt.Fprintf(multi, "%d%s\n", 0, CONTENTS)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
 	err = out.Close()
 	if err != nil {
@@ -1898,7 +1922,10 @@ func TestSLOAppend(t *testing.T) {
 	buf := bytes.NewBuffer([]byte(contents))
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
-		fmt.Fprintf(multi, "%d %s\n", i+10, CONTENTS)
+		_, err = fmt.Fprintf(multi, "%d %s\n", i+10, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = out.Close()
 	if err != nil {
@@ -1964,7 +1991,10 @@ func TestSLONoSegmentContainer(t *testing.T) {
 	buf := &bytes.Buffer{}
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
-		fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	err = out.Close()
 	if err != nil {

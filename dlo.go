@@ -101,7 +101,6 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 	)
 
 	partNumber := 1
-	totalRead := int64(0)
 	chunkSize := int64(file.chunkSize)
 	readers := []io.Reader{}
 	hash := md5.New()
@@ -126,8 +125,13 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 	}
 
 	if file.filePos-cursor > 0 && min(currentLength, file.filePos)-cursor > 0 {
-		// Offset is inside the current segment : we need to read the
-		// data from the beginning of the segment to offset
+		// Offset is inside the current segment : we need to read the data from
+		// the beginning of the segment to offset, for this we must ensure that
+		// the manifest is already written.
+		err = file.saveManifest()
+		if err != nil {
+			return 0, err
+		}
 		headers := make(Headers)
 		headers["Range"] = "bytes=" + strconv.FormatInt(cursor, 10) + "-" + strconv.FormatInt(min(currentLength, file.filePos)-1, 10)
 		currentSegment, _, err := file.conn.ObjectOpen(file.container, file.objectName, false, headers)
@@ -137,7 +141,6 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 		defer currentSegment.Close()
 		paddingReader = currentSegment
 		readers = append(readers, io.LimitReader(paddingReader, min(currentLength, file.filePos)-cursor))
-		totalRead -= min(currentLength, file.filePos) - cursor
 	}
 
 	if paddingReader != nil {
@@ -206,6 +209,7 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 	finished := false
 	read := int64(0)
 	bytesRead := int64(0)
+	startPos := file.filePos
 	for finished == false {
 		finished, read, err = writeSegment()
 		bytesRead += read
@@ -214,13 +218,22 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 			return bytesRead, err
 		}
 	}
+	file.currentLength = max(startPos+bytesRead, currentLength)
 
 	return bytesRead, nil
 }
 
 // Close satisfies the io.Closer interface
 func (file *DynamicLargeObjectCreateFile) Close() error {
-	return file.conn.createDLOManifest(file.container, file.objectName, file.segmentContainer+"/"+file.prefix, file.contentType)
+	return file.saveManifest()
+}
+
+func (file *DynamicLargeObjectCreateFile) saveManifest() error {
+	err := file.conn.createDLOManifest(file.container, file.objectName, file.segmentContainer+"/"+file.prefix, file.contentType)
+	if err != nil {
+		return err
+	}
+	return file.waitForSegmentsToShowUp()
 }
 
 func (c *Connection) getAllDLOSegments(segmentContainer, segmentPath string) ([]Object, error) {

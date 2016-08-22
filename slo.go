@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"time"
 )
 
 // StaticLargeObjectCreateFile represents an open static large object
@@ -22,12 +21,6 @@ type StaticLargeObjectCreateFile struct {
 
 // minChunkSize defines the minimum size of a segment
 const minChunkSize = 1 << 20
-
-// readAfterWriteTimeout defines the time we wait before an object appears after having been uploaded
-var readAfterWriteTimeout = 15 * time.Second
-
-// readAfterWriteWait defines the time to sleep between two retries
-var readAfterWriteWait = 200 * time.Millisecond
 
 var SLONotSupported = errors.New("SLO not supported")
 
@@ -188,8 +181,13 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 	}
 
 	if file.filePos-cursor > 0 && min(currentLength, file.filePos)-cursor > 0 {
-		// Offset is inside the current segment : we need to read the
-		// data from the beginning of the segment to offset
+		// Offset is inside the current segment : we need to read the data from
+		// the beginning of the segment to offset, for this we must ensure that
+		// the manifest is already written.
+		err = file.saveManifest()
+		if err != nil {
+			return 0, err
+		}
 		headers := make(Headers)
 		headers["Range"] = "bytes=" + strconv.FormatInt(cursor, 10) + "-" + strconv.FormatInt(min(currentLength, file.filePos)-1, 10)
 		f, _, err := file.conn.ObjectOpen(file.container, file.objectName, false, headers)
@@ -229,7 +227,7 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 		if n > 0 {
 			defer func() {
 				closeError := currentSegment.Close()
-				if err != nil {
+				if closeError != nil {
 					err = closeError
 				}
 
@@ -255,20 +253,19 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 			if cursor+n < end {
 				// Copy the end of the chunk
 				headers := make(Headers)
-				headers["Range"] = "bytes=" + strconv.FormatInt(cursor+n, 10) + "-" + strconv.FormatInt(cursor+chunkSize-1, 10)
+				headers["Range"] = "bytes=" + strconv.FormatInt(cursor+n, 10) + "-" + strconv.FormatInt(end-1, 10)
 				file, _, err := file.conn.ObjectOpen(file.container, file.objectName, false, headers)
 				if err != nil {
 					return false, bytesRead, err
 				}
 
 				_, copyErr := io.Copy(writer, file)
+				if copyErr != nil {
+					return false, bytesRead, copyErr
+				}
 
 				if err := file.Close(); err != nil {
 					return false, bytesRead, err
-				}
-
-				if copyErr != nil {
-					return false, bytesRead, copyErr
 				}
 			}
 
@@ -292,23 +289,11 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 		}
 	}
 
+	file.currentLength = max(file.filePos+bytesRead, currentLength)
 	file.filePos += totalRead
 
 	for ; partNumber <= len(file.segments); partNumber++ {
 		hash.Write([]byte(file.segments[partNumber-1].Hash))
-	}
-
-	waitingTime := readAfterWriteWait
-	endTime := time.Now().Add(readAfterWriteTimeout)
-	for {
-		if err = file.conn.createSLOManifest(file.container, file.objectName, file.contentType, file.segmentContainer, file.segments); err == nil {
-			break
-		}
-		if time.Now().Add(waitingTime).After(endTime) {
-			return 0, err
-		}
-		time.Sleep(waitingTime)
-		waitingTime *= 2
 	}
 
 	return bytesRead, err
@@ -316,11 +301,14 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 
 // Close satisfies the io.Closer interface
 func (file *StaticLargeObjectCreateFile) Close() error {
+	return file.saveManifest()
+}
+
+func (file *StaticLargeObjectCreateFile) saveManifest() error {
 	if err := file.conn.createSLOManifest(file.container, file.objectName, file.contentType, file.segmentContainer, file.segments); err != nil {
 		return err
 	}
-
-	return nil
+	return file.waitForSegmentsToShowUp()
 }
 
 func (c *Connection) getAllSLOSegments(container, path string) (string, []Object, error) {
