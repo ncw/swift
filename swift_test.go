@@ -1844,6 +1844,75 @@ func TestDLOCreateMissingSegmentsInList(t *testing.T) {
 	}
 }
 
+func TestDLOCreateIncorrectSize(t *testing.T) {
+	if srv == nil {
+		t.Skipf("This test only runs with the fake swift server as it's needed to simulate eventual consistency problems.")
+		return
+	}
+
+	listURL := "/v1/AUTH_" + swifttest.TEST_ACCOUNT + "/" + CONTAINER + "/" + OBJECT
+	headCount := 0
+	expectedHeadCount := 5
+	srv.SetOverride(listURL, func(w http.ResponseWriter, r *http.Request, recorder *httptest.ResponseRecorder) {
+		for k, v := range recorder.HeaderMap {
+			w.Header().Set(k, v[0])
+		}
+		if r.Method == "HEAD" {
+			headCount++
+			if headCount < expectedHeadCount {
+				w.Header().Set("Content-Length", "7")
+			}
+		}
+		w.WriteHeader(recorder.Code)
+		w.Write(recorder.Body.Bytes())
+	})
+	defer srv.UnsetOverride(listURL)
+
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	if headCount != expectedHeadCount {
+		t.Errorf("Unexpected HEAD requests count, expected %d, got: %d", expectedHeadCount, headCount)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Error("Contents wrong")
+	}
+
+	err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSLOCreate(t *testing.T) {
 	headers := swift.Headers{}
 	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)

@@ -308,7 +308,7 @@ func (file *StaticLargeObjectCreateFile) saveManifest() error {
 	if err := file.conn.createSLOManifest(file.container, file.objectName, file.contentType, file.segmentContainer, file.segments); err != nil {
 		return err
 	}
-	return file.waitForSegmentsToShowUp()
+	return file.conn.waitForSegmentsToShowUp(file.container, file.objectName, file.currentLength)
 }
 
 func (c *Connection) getAllSLOSegments(container, path string) (string, []Object, error) {

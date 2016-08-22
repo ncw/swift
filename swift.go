@@ -1462,7 +1462,7 @@ func (file *ObjectOpenFile) Close() (err error) {
 var _ io.ReadCloser = &ObjectOpenFile{}
 var _ io.Seeker = &ObjectOpenFile{}
 
-func (c *Connection) objectOpen(container string, objectName string, checkHash bool, h Headers, parameters url.Values) (file *ObjectOpenFile, headers Headers, err error) {
+func (c *Connection) objectOpenBase(container string, objectName string, checkHash bool, h Headers, parameters url.Values) (file *ObjectOpenFile, headers Headers, err error) {
 	var resp *http.Response
 	opts := RequestOpts{
 		Container:  container,
@@ -1499,6 +1499,17 @@ func (c *Connection) objectOpen(container string, objectName string, checkHash b
 		file.length, err = getInt64FromHeader(resp, "Content-Length")
 		file.lengthOk = (err == nil)
 	}
+	return
+}
+
+func (c *Connection) objectOpen(container string, objectName string, checkHash bool, h Headers, parameters url.Values) (file *ObjectOpenFile, headers Headers, err error) {
+	err = withLORetry(0, func() (Headers, int64, error) {
+		file, headers, err = c.objectOpenBase(container, objectName, checkHash, h, parameters)
+		if err != nil {
+			return headers, 0, err
+		}
+		return headers, file.length, nil
+	})
 	return
 }
 
@@ -1772,6 +1783,17 @@ func (c *Connection) BulkUpload(uploadPath string, dataStream io.Reader, format 
 //
 // Use headers.ObjectMetadata() to read the metadata in the Headers.
 func (c *Connection) Object(container string, objectName string) (info Object, headers Headers, err error) {
+	err = withLORetry(0, func() (Headers, int64, error) {
+		info, headers, err = c.objectBase(container, objectName)
+		if err != nil {
+			return headers, 0, err
+		}
+		return headers, info.Bytes, nil
+	})
+	return
+}
+
+func (c *Connection) objectBase(container string, objectName string) (info Object, headers Headers, err error) {
 	var resp *http.Response
 	resp, headers, err = c.storage(RequestOpts{
 		Container:  container,

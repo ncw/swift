@@ -233,7 +233,7 @@ func (file *DynamicLargeObjectCreateFile) saveManifest() error {
 	if err != nil {
 		return err
 	}
-	return file.waitForSegmentsToShowUp()
+	return file.conn.waitForSegmentsToShowUp(file.container, file.objectName, file.currentLength)
 }
 
 func (c *Connection) getAllDLOSegments(segmentContainer, segmentPath string) ([]Object, error) {

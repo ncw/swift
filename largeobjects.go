@@ -74,10 +74,18 @@ func parseFullPath(manifest string) (container string, prefix string) {
 	return container, prefix
 }
 
-func isManifest(headers Headers) bool {
+func isManifestDLO(headers Headers) bool {
 	_, isDLO := headers["X-Object-Manifest"]
+	return isDLO
+}
+
+func isManifestSLO(headers Headers) bool {
 	_, isSLO := headers["X-Static-Large-Object"]
-	return isSLO || isDLO
+	return isSLO
+}
+
+func isManifest(headers Headers) bool {
+	return isManifestSLO(headers) || isManifestDLO(headers)
 }
 
 func (c *Connection) getAllSegments(container string, path string, headers Headers) (string, []Object, error) {
@@ -86,7 +94,7 @@ func (c *Connection) getAllSegments(container string, path string, headers Heade
 		segments, err := c.getAllDLOSegments(segmentContainer, segmentPath)
 		return segmentContainer, segments, err
 	}
-	if _, isSLO := headers["X-Static-Large-Object"]; isSLO {
+	if isManifestSLO(headers) {
 		return c.getAllSLOSegments(container, path)
 	}
 	return "", nil, NotLargeObject
@@ -260,24 +268,38 @@ func (file *LargeObjectCreateFile) Seek(offset int64, whence int) (int64, error)
 	return file.filePos, nil
 }
 
-func (file *LargeObjectCreateFile) waitForSegmentsToShowUp() error {
-	var err error
+func withLORetry(expectedSize int64, fn func() (Headers, int64, error)) (err error) {
 	waitingTime := readAfterWriteWait
 	endTimer := time.After(readAfterWriteTimeout)
 	for {
-		var info Object
-		if info, _, err = file.conn.Object(file.container, file.objectName); err == nil {
-			if info.Bytes == file.currentLength {
-				break
+		var headers Headers
+		var sz int64
+		if headers, sz, err = fn(); err == nil {
+			if !isManifestDLO(headers) || (expectedSize == 0 && sz > 0) || expectedSize == sz {
+				return
 			}
-			err = fmt.Errorf("Timeout expired while waiting for segments of %s to show up", file.objectName)
+		} else {
+			return
 		}
 		select {
 		case <-endTimer:
-			return err
+			err = fmt.Errorf("Timeout expired while waiting for object to have size == %d", expectedSize)
+			return
 		case <-time.After(waitingTime):
 			waitingTime *= 2
 		}
 	}
-	return err
+}
+
+func (c *Connection) waitForSegmentsToShowUp(container, objectName string, expectedSize int64) (err error) {
+	err = withLORetry(expectedSize, func() (Headers, int64, error) {
+		var info Object
+		var headers Headers
+		info, headers, err = c.objectBase(container, objectName)
+		if err != nil {
+			return headers, 0, err
+		}
+		return headers, info.Bytes, nil
+	})
+	return
 }
