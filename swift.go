@@ -1812,10 +1812,10 @@ func (c *Connection) Object(container string, objectName string) (info Object, h
 	}
 
 	info.Hash = resp.Header.Get("Etag")
-	if prefix := resp.Header.Get("X-Object-Manifest"); prefix != "" {
-		info.ObjectType = StaticLargeObjectType
-	} else if resp.Header.Get("X-Static-Large-Object") != "" {
+	if resp.Header.Get("X-Object-Manifest") != "" {
 		info.ObjectType = DynamicLargeObjectType
+	} else if resp.Header.Get("X-Static-Large-Object") != "" {
+		info.ObjectType = StaticLargeObjectType
 	}
 
 	return

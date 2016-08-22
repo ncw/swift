@@ -1603,6 +1603,16 @@ func TestDLOCreate(t *testing.T) {
 	if contents != expected {
 		t.Error("Contents wrong")
 	}
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ObjectType != swift.DynamicLargeObjectType {
+		t.Errorf("Wrong ObjectType, expected %d, got: %d", swift.DynamicLargeObjectType, info.ObjectType)
+	}
+	if info.Bytes != int64(len(expected)) {
+		t.Errorf("Wrong Bytes size, expected %d, got: %d", len(expected), info.Bytes)
+	}
 }
 
 func TestDLOInsert(t *testing.T) {
@@ -1870,6 +1880,16 @@ func TestSLOCreate(t *testing.T) {
 	}
 	if contents != expected {
 		t.Error("Contents wrong")
+	}
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ObjectType != swift.StaticLargeObjectType {
+		t.Errorf("Wrong ObjectType, expected %d, got: %d", swift.StaticLargeObjectType, info.ObjectType)
+	}
+	if info.Bytes != int64(len(expected)) {
+		t.Errorf("Wrong Bytes size, expected %d, got: %d", len(expected), info.Bytes)
 	}
 }
 
