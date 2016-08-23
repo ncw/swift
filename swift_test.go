@@ -16,6 +16,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"crypto/md5"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
@@ -1911,6 +1912,72 @@ func TestDLOCreateIncorrectSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestDLOConcurrentWrite(t *testing.T) {
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nConcurrency := 5
+	nChunks := 100
+	var chunkSize int64 = 32 * 1024
+
+	writeFn := func(i int) {
+		objName := fmt.Sprintf("%s_concurrent_dlo_%d", OBJECT, i)
+		opts := swift.LargeObjectOpts{
+			Container:   CONTAINER,
+			ObjectName:  objName,
+			ContentType: "image/jpeg",
+		}
+		out, err := c.DynamicLargeObjectCreate(&opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf := &bytes.Buffer{}
+		for j := 0; j < nChunks; j++ {
+			data, err := ioutil.ReadAll(io.LimitReader(rand.Reader, chunkSize))
+			if err != nil {
+				t.Fatal(err)
+			}
+			multi := io.MultiWriter(buf, out)
+			n, err := multi.Write(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if int64(n) != chunkSize {
+				t.Fatalf("expected to write %d, got: %d", chunkSize, n)
+			}
+		}
+		err = out.Close()
+		if err != nil {
+			t.Error(err)
+		}
+		expected := buf.String()
+		contents, err := c.ObjectGetString(CONTAINER, objName)
+		if err != nil {
+			t.Error(err)
+		}
+		if contents != expected {
+			t.Error("Contents wrong")
+		}
+		err = c.DynamicLargeObjectDelete(CONTAINER, objName)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < nConcurrency; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			writeFn(i)
+		}(i)
+	}
+	wg.Wait()
 }
 
 func TestSLOCreate(t *testing.T) {
