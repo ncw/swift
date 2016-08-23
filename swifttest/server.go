@@ -205,7 +205,7 @@ func (m metadata) getMetadata(a *action) {
 	}
 }
 
-func (c container) list(delimiter string, marker string, prefix string, parent string) (resp []interface{}) {
+func (c *container) list(delimiter string, marker string, prefix string, parent string) (resp []interface{}) {
 	var tmp orderedObjects
 
 	c.RLock()
@@ -266,7 +266,6 @@ func (r containerResource) get(a *action) interface{} {
 	}
 
 	r.container.RLock()
-	defer r.container.RUnlock()
 
 	delimiter := a.req.Form.Get("delimiter")
 	marker := a.req.Form.Get("marker")
@@ -279,8 +278,10 @@ func (r containerResource) get(a *action) interface{} {
 	r.container.getMetadata(a)
 
 	if a.req.Method == "HEAD" {
+		r.container.RUnlock()
 		return nil
 	}
+	r.container.RUnlock()
 
 	objects := r.container.list(delimiter, marker, prefix, parent)
 
@@ -634,9 +635,7 @@ func (objr objectResource) put(a *action) interface{} {
 	objr.container.bytes += int64(len(data))
 	objr.container.Unlock()
 
-	a.user.Lock()
-	a.user.BytesUsed += int64(len(data))
-	a.user.Unlock()
+	atomic.AddInt64(&a.user.BytesUsed, int64(len(data)))
 
 	h := a.w.Header()
 	h.Set("ETag", hex.EncodeToString(obj.checksum))
