@@ -184,7 +184,7 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 		// Offset is inside the current segment : we need to read the data from
 		// the beginning of the segment to offset, for this we must ensure that
 		// the manifest is already written.
-		err = file.saveManifest()
+		err = file.Flush()
 		if err != nil {
 			return 0, err
 		}
@@ -301,14 +301,14 @@ func (file *StaticLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, er
 
 // Close satisfies the io.Closer interface
 func (file *StaticLargeObjectCreateFile) Close() error {
-	return file.saveManifest()
+	return file.Flush()
 }
 
-func (file *StaticLargeObjectCreateFile) saveManifest() error {
+func (file *StaticLargeObjectCreateFile) Flush() error {
 	if err := file.conn.createSLOManifest(file.container, file.objectName, file.contentType, file.segmentContainer, file.segments); err != nil {
 		return err
 	}
-	return file.conn.waitForSegmentsToShowUp(file.container, file.objectName, file.currentLength)
+	return file.conn.waitForSegmentsToShowUp(file.container, file.objectName, file.Size())
 }
 
 func (c *Connection) getAllSLOSegments(container, path string) (string, []Object, error) {

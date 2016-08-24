@@ -440,7 +440,9 @@ func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
 	if err == nil {
 		err = readJson(resp, &infos)
 		if err == nil {
+			c.authLock.Lock()
 			c.swiftInfo = infos
+			c.authLock.Unlock()
 		}
 		return infos, err
 	}
@@ -448,13 +450,16 @@ func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
 }
 
 func (c *Connection) cachedQueryInfo() (infos SwiftInfo, err error) {
-	if c.swiftInfo == nil {
-		_, err = c.QueryInfo()
+	c.authLock.Lock()
+	infos = c.swiftInfo
+	c.authLock.Unlock()
+	if infos == nil {
+		infos, err = c.QueryInfo()
 		if err != nil {
 			return
 		}
 	}
-	return c.swiftInfo, nil
+	return infos, nil
 }
 
 // RequestOpts contains parameters for Connection.storage.
@@ -1477,7 +1482,7 @@ func (c *Connection) objectOpenBase(container string, objectName string, checkHa
 		return
 	}
 	// Can't check MD5 on an object with X-Object-Manifest or X-Static-Large-Object set
-	if checkHash && isManifest(headers) {
+	if checkHash && headers.IsLargeObject() {
 		// log.Printf("swift: turning off md5 checking on object with manifest %v", objectName)
 		checkHash = false
 	}

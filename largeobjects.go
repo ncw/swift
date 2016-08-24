@@ -74,18 +74,18 @@ func parseFullPath(manifest string) (container string, prefix string) {
 	return container, prefix
 }
 
-func isManifestDLO(headers Headers) bool {
+func (headers Headers) IsLargeObjectDLO() bool {
 	_, isDLO := headers["X-Object-Manifest"]
 	return isDLO
 }
 
-func isManifestSLO(headers Headers) bool {
+func (headers Headers) IsLargeObjectSLO() bool {
 	_, isSLO := headers["X-Static-Large-Object"]
 	return isSLO
 }
 
-func isManifest(headers Headers) bool {
-	return isManifestSLO(headers) || isManifestDLO(headers)
+func (headers Headers) IsLargeObject() bool {
+	return headers.IsLargeObjectSLO() || headers.IsLargeObjectDLO()
 }
 
 func (c *Connection) getAllSegments(container string, path string, headers Headers) (string, []Object, error) {
@@ -94,7 +94,7 @@ func (c *Connection) getAllSegments(container string, path string, headers Heade
 		segments, err := c.getAllDLOSegments(segmentContainer, segmentPath)
 		return segmentContainer, segments, err
 	}
-	if isManifestSLO(headers) {
+	if headers.IsLargeObjectSLO() {
 		return c.getAllSLOSegments(container, path)
 	}
 	return "", nil, NotLargeObject
@@ -135,7 +135,7 @@ func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreat
 	}
 
 	if info, headers, err := c.Object(opts.Container, opts.ObjectName); err == nil {
-		if isManifest(headers) {
+		if headers.IsLargeObject() {
 			segmentContainer, segments, err = c.getAllSegments(opts.Container, opts.ObjectName, headers)
 			if err != nil {
 				return nil, err
@@ -198,7 +198,7 @@ func (c *Connection) LargeObjectDelete(container string, objectName string) erro
 	}
 
 	var objects [][]string
-	if isManifest(headers) {
+	if headers.IsLargeObject() {
 		segmentContainer, segments, err := c.getAllSegments(container, objectName, headers)
 		if err != nil {
 			return err
@@ -268,6 +268,10 @@ func (file *LargeObjectCreateFile) Seek(offset int64, whence int) (int64, error)
 	return file.filePos, nil
 }
 
+func (file *LargeObjectCreateFile) Size() int64 {
+	return file.currentLength
+}
+
 func withLORetry(expectedSize int64, fn func() (Headers, int64, error)) (err error) {
 	waitingTime := readAfterWriteWait
 	endTimer := time.After(readAfterWriteTimeout)
@@ -275,7 +279,7 @@ func withLORetry(expectedSize int64, fn func() (Headers, int64, error)) (err err
 		var headers Headers
 		var sz int64
 		if headers, sz, err = fn(); err == nil {
-			if !isManifestDLO(headers) || (expectedSize == 0 && sz > 0) || expectedSize == sz {
+			if !headers.IsLargeObjectDLO() || (expectedSize == 0 && sz > 0) || expectedSize == sz {
 				return
 			}
 		} else {

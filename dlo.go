@@ -128,7 +128,7 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 		// Offset is inside the current segment : we need to read the data from
 		// the beginning of the segment to offset, for this we must ensure that
 		// the manifest is already written.
-		err = file.saveManifest()
+		err = file.Flush()
 		if err != nil {
 			return 0, err
 		}
@@ -157,10 +157,7 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 			return false, bytesRead, err
 		}
 
-		buf := new(bytes.Buffer)
-		multi2 := io.MultiWriter(currentSegment, buf)
-
-		n, err := io.Copy(multi2, multi)
+		n, err := io.Copy(currentSegment, multi)
 		if err != nil {
 			return false, bytesRead, err
 		}
@@ -225,15 +222,15 @@ func (file *DynamicLargeObjectCreateFile) ReadFrom(reader io.Reader) (n int64, e
 
 // Close satisfies the io.Closer interface
 func (file *DynamicLargeObjectCreateFile) Close() error {
-	return file.saveManifest()
+	return file.Flush()
 }
 
-func (file *DynamicLargeObjectCreateFile) saveManifest() error {
+func (file *DynamicLargeObjectCreateFile) Flush() error {
 	err := file.conn.createDLOManifest(file.container, file.objectName, file.segmentContainer+"/"+file.prefix, file.contentType)
 	if err != nil {
 		return err
 	}
-	return file.conn.waitForSegmentsToShowUp(file.container, file.objectName, file.currentLength)
+	return file.conn.waitForSegmentsToShowUp(file.container, file.objectName, file.Size())
 }
 
 func (c *Connection) getAllDLOSegments(segmentContainer, segmentPath string) ([]Object, error) {
