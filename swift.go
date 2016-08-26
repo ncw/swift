@@ -429,6 +429,14 @@ func (i SwiftInfo) SupportsSLO() bool {
 	return val
 }
 
+func (i SwiftInfo) SLOMinSegmentSize() int64 {
+	if slo, ok := i["slo"].(map[string]interface{}); ok {
+		val, _ := slo["min_segment_size"].(float64)
+		return int64(val)
+	}
+	return 1
+}
+
 // Discover Swift configuration by doing a request against /info
 func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
 	infoUrl, err := url.Parse(c.StorageUrl)

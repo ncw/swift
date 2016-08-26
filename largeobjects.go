@@ -1,13 +1,16 @@
 package swift
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	gopath "path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,8 +24,8 @@ var readAfterWriteTimeout = 15 * time.Second
 // readAfterWriteWait defines the time to sleep between two retries
 var readAfterWriteWait = 200 * time.Millisecond
 
-// LargeObjectCreateFile represents an open static or dynamic large object
-type LargeObjectCreateFile struct {
+// largeObjectCreateFile represents an open static or dynamic large object
+type largeObjectCreateFile struct {
 	conn             *Connection
 	container        string
 	objectName       string
@@ -35,20 +38,7 @@ type LargeObjectCreateFile struct {
 	checkHash        bool
 	segments         []Object
 	headers          Headers
-}
-
-func max(a int64, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a int64, b int64) int64 {
-	if a < b {
-		return a
-	}
-	return b
+	minChunkSize     int64
 }
 
 func swiftSegmentPath(path string) (string, error) {
@@ -110,8 +100,17 @@ type LargeObjectOpts struct {
 	ContentType      string  // Content-Type of the object
 	Headers          Headers // Additional headers to upload the object with
 	ChunkSize        int64   // Size of chunks of the object, defaults to 10MB if not set
+	MinChunkSize     int64   // Minimum chunk size, automatically set for SLO's based on info
 	SegmentContainer string  // Name of the container to place segments
 	SegmentPrefix    string  // Prefix to use for the segments
+}
+
+type LargeObjectFile interface {
+	io.Writer
+	io.Seeker
+	io.Closer
+	Size() int64
+	Flush() error
 }
 
 // LargeObjectCreate creates a large object at opts.Container, opts.ObjectName.
@@ -119,7 +118,7 @@ type LargeObjectOpts struct {
 // opts.Flags can have the following bits set
 //   os.TRUNC  - remove the contents of the large object if it exists
 //   os.APPEND - write at the end of the large object
-func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreateFile, error) {
+func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*largeObjectCreateFile, error) {
 	var (
 		segmentPath      string
 		segmentContainer string
@@ -135,24 +134,24 @@ func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreat
 	}
 
 	if info, headers, err := c.Object(opts.Container, opts.ObjectName); err == nil {
-		if headers.IsLargeObject() {
-			segmentContainer, segments, err = c.getAllSegments(opts.Container, opts.ObjectName, headers)
-			if err != nil {
-				return nil, err
-			}
-			if len(segments) > 0 {
-				segmentPath = gopath.Dir(segments[0].Name)
-			}
-		} else {
-			if err := c.ObjectMove(opts.Container, opts.ObjectName, opts.Container, getSegment(segmentPath, 1)); err != nil {
-				return nil, err
-			}
-			segments = append(segments, info)
-		}
 		if opts.Flags&os.O_TRUNC != 0 {
 			c.LargeObjectDelete(opts.Container, opts.ObjectName)
 		} else {
 			currentLength = info.Bytes
+			if headers.IsLargeObject() {
+				segmentContainer, segments, err = c.getAllSegments(opts.Container, opts.ObjectName, headers)
+				if err != nil {
+					return nil, err
+				}
+				if len(segments) > 0 {
+					segmentPath = gopath.Dir(segments[0].Name)
+				}
+			} else {
+				if err = c.ObjectMove(opts.Container, opts.ObjectName, opts.Container, getSegment(segmentPath, 1)); err != nil {
+					return nil, err
+				}
+				segments = append(segments, info)
+			}
 		}
 	} else if err != ObjectNotFound {
 		return nil, err
@@ -167,12 +166,14 @@ func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreat
 		}
 	}
 
-	file := &LargeObjectCreateFile{
+	file := &largeObjectCreateFile{
 		conn:             c,
 		checkHash:        opts.CheckHash,
 		container:        opts.Container,
 		objectName:       opts.ObjectName,
 		chunkSize:        opts.ChunkSize,
+		minChunkSize:     opts.MinChunkSize,
+		headers:          opts.Headers,
 		segmentContainer: segmentContainer,
 		prefix:           segmentPath,
 		segments:         segments,
@@ -181,6 +182,10 @@ func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*LargeObjectCreat
 
 	if file.chunkSize == 0 {
 		file.chunkSize = 10 * 1024 * 1024
+	}
+
+	if file.minChunkSize > file.chunkSize {
+		file.chunkSize = file.minChunkSize
 	}
 
 	if opts.Flags&os.O_APPEND != 0 {
@@ -251,7 +256,7 @@ func (c *Connection) LargeObjectGetSegments(container string, path string) (stri
 }
 
 // Seek sets the offset for the next write operation
-func (file *LargeObjectCreateFile) Seek(offset int64, whence int) (int64, error) {
+func (file *largeObjectCreateFile) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case 0:
 		file.filePos = offset
@@ -268,7 +273,7 @@ func (file *LargeObjectCreateFile) Seek(offset int64, whence int) (int64, error)
 	return file.filePos, nil
 }
 
-func (file *LargeObjectCreateFile) Size() int64 {
+func (file *largeObjectCreateFile) Size() int64 {
 	return file.currentLength
 }
 
@@ -287,7 +292,7 @@ func withLORetry(expectedSize int64, fn func() (Headers, int64, error)) (err err
 		}
 		select {
 		case <-endTimer:
-			err = fmt.Errorf("Timeout expired while waiting for object to have size == %d", expectedSize)
+			err = fmt.Errorf("Timeout expired while waiting for object to have size == %d, got: %d", expectedSize, sz)
 			return
 		case <-time.After(waitingTime):
 			waitingTime *= 2
@@ -306,4 +311,90 @@ func (c *Connection) waitForSegmentsToShowUp(container, objectName string, expec
 		return headers, info.Bytes, nil
 	})
 	return
+}
+
+// Write satisfies the io.Writer interface
+func (file *largeObjectCreateFile) Write(buf []byte) (int, error) {
+	var sz int64
+	var relativeFilePos int
+	writeSegmentIdx := 0
+	for i, obj := range file.segments {
+		if file.filePos < sz+obj.Bytes || (i == len(file.segments)-1 && file.filePos < sz+file.minChunkSize) {
+			relativeFilePos = int(file.filePos - sz)
+			break
+		}
+		writeSegmentIdx++
+		sz += obj.Bytes
+	}
+	sizeToWrite := len(buf)
+	for offset := 0; offset < sizeToWrite; {
+		newSegment, n, err := file.writeSegment(buf[offset:], writeSegmentIdx, relativeFilePos)
+		if err != nil {
+			return 0, err
+		}
+		if writeSegmentIdx < len(file.segments) {
+			file.segments[writeSegmentIdx] = *newSegment
+		} else {
+			file.segments = append(file.segments, *newSegment)
+		}
+		offset += n
+		writeSegmentIdx++
+		relativeFilePos = 0
+	}
+	file.filePos += int64(sizeToWrite)
+	file.currentLength = 0
+	for _, obj := range file.segments {
+		file.currentLength += obj.Bytes
+	}
+	return sizeToWrite, nil
+}
+
+func (file *largeObjectCreateFile) writeSegment(buf []byte, writeSegmentIdx int, relativeFilePos int) (*Object, int, error) {
+	var (
+		readers         []io.Reader
+		existingSegment *Object
+		segmentSize     int
+	)
+	segmentName := getSegment(file.prefix, writeSegmentIdx+1)
+	sizeToRead := int(file.chunkSize)
+	if writeSegmentIdx < len(file.segments) {
+		existingSegment = &file.segments[writeSegmentIdx]
+		if writeSegmentIdx != len(file.segments)-1 {
+			sizeToRead = int(existingSegment.Bytes)
+		}
+		if relativeFilePos > 0 {
+			headers := make(Headers)
+			headers["Range"] = "bytes=0-" + strconv.FormatInt(int64(relativeFilePos-1), 10)
+			existingSegmentReader, _, err := file.conn.ObjectOpen(file.segmentContainer, segmentName, true, headers)
+			if err != nil {
+				return nil, 0, err
+			}
+			defer existingSegmentReader.Close()
+			sizeToRead -= relativeFilePos
+			segmentSize += relativeFilePos
+			readers = []io.Reader{existingSegmentReader}
+		}
+	}
+	if sizeToRead > len(buf) {
+		sizeToRead = len(buf)
+	}
+	segmentSize += sizeToRead
+	readers = append(readers, bytes.NewReader(buf[:sizeToRead]))
+	if existingSegment != nil && segmentSize < int(existingSegment.Bytes) {
+		headers := make(Headers)
+		headers["Range"] = "bytes=" + strconv.FormatInt(int64(segmentSize), 10) + "-"
+		tailSegmentReader, _, err := file.conn.ObjectOpen(file.segmentContainer, segmentName, true, headers)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer tailSegmentReader.Close()
+		segmentSize = int(existingSegment.Bytes)
+		readers = append(readers, tailSegmentReader)
+	}
+	segmentReader := io.MultiReader(readers...)
+	headers, err := file.conn.ObjectPut(file.segmentContainer, segmentName, segmentReader, true, "", file.contentType, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	return &Object{Name: segmentName, Bytes: int64(segmentSize), Hash: headers["Etag"]}, sizeToRead, nil
 }
