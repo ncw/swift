@@ -35,7 +35,7 @@ type swiftSegment struct {
 
 // StaticLargeObjectCreateFile creates a static large object returning
 // an object which satisfies io.Writer, io.Seeker, io.Closer and
-// io.ReaderFrom.  The flags are as passed to the LargeObjectCreate
+// io.ReaderFrom.  The flags are as passed to the largeObjectCreate
 // method.
 func (c *Connection) StaticLargeObjectCreateFile(opts *LargeObjectOpts) (LargeObjectFile, error) {
 	info, err := c.cachedQueryInfo()
@@ -49,13 +49,13 @@ func (c *Connection) StaticLargeObjectCreateFile(opts *LargeObjectOpts) (LargeOb
 	if realMinChunkSize > opts.MinChunkSize {
 		opts.MinChunkSize = realMinChunkSize
 	}
-	lo, err := c.LargeObjectCreate(opts)
+	lo, err := c.largeObjectCreate(opts)
 	if err != nil {
 		return nil, err
 	}
-	return &StaticLargeObjectCreateFile{
+	return withBuffer(opts, &StaticLargeObjectCreateFile{
 		largeObjectCreateFile: *lo,
-	}, nil
+	}), nil
 }
 
 // StaticLargeObjectCreate creates or truncates an existing static

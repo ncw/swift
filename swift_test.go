@@ -1987,6 +1987,7 @@ func TestDLOSegmentation(t *testing.T) {
 		ObjectName:  OBJECT,
 		ContentType: "image/jpeg",
 		ChunkSize:   6,
+		NoBuffer:    true,
 	}
 
 	testSegmentation(t, func() swift.LargeObjectFile {
@@ -1999,6 +2000,57 @@ func TestDLOSegmentation(t *testing.T) {
 		{
 			writes:        []string{"0", "1", "2", "3", "4", "5", "6", "7", "8"},
 			expectedSegs:  []string{"0", "1", "2", "3", "4", "5", "6", "7", "8"},
+			expectedValue: "012345678",
+		},
+		{
+			writes:        []string{"012345", "012345"},
+			expectedSegs:  []string{"012345", "012345"},
+			expectedValue: "012345012345",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			expectedSegs:  []string{"012345", "6", "012345", "6"},
+			expectedValue: "01234560123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012012", "3456"},
+			expectedValue: "0120123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456", "abcde"},
+			seeks:         []int{0, -11, 0},
+			expectedSegs:  []string{"012abc", "d", "e12345", "6"},
+			expectedValue: "012abcde123456",
+		},
+		{
+			writes:        []string{"0123456", "ab"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012ab5", "6"},
+			expectedValue: "012ab56",
+		},
+	})
+}
+
+func TestDLOSegmentationBuffered(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+		ChunkSize:   6,
+	}
+
+	testSegmentation(t, func() swift.LargeObjectFile {
+		out, err := c.DynamicLargeObjectCreate(&opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}, []segmentTest{
+		{
+			writes:        []string{"0", "1", "2", "3", "4", "5", "6", "7", "8"},
+			expectedSegs:  []string{"012345", "678"},
 			expectedValue: "012345678",
 		},
 		{
@@ -2241,6 +2293,7 @@ func TestSLOMinChunkSize(t *testing.T) {
 		ContentType:  "image/jpeg",
 		ChunkSize:    6,
 		MinChunkSize: 0,
+		NoBuffer:     true,
 	}
 
 	testSLOSegmentation(t, func() swift.LargeObjectFile {
@@ -2260,6 +2313,7 @@ func TestSLOSegmentation(t *testing.T) {
 		ContentType:  "image/jpeg",
 		ChunkSize:    6,
 		MinChunkSize: 4,
+		NoBuffer:     true,
 	}
 	testSLOSegmentation(t, func() swift.LargeObjectFile {
 		out, err := c.StaticLargeObjectCreate(&opts)
@@ -2267,6 +2321,57 @@ func TestSLOSegmentation(t *testing.T) {
 			t.Fatal(err)
 		}
 		return out
+	})
+}
+
+func TestSLOSegmentationBuffered(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:    CONTAINER,
+		ObjectName:   OBJECT,
+		ContentType:  "image/jpeg",
+		ChunkSize:    6,
+		MinChunkSize: 4,
+	}
+	testSegmentation(t, func() swift.LargeObjectFile {
+		out, err := c.StaticLargeObjectCreate(&opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}, []segmentTest{
+		{
+			writes:        []string{"0", "1", "2", "3", "4", "5", "6", "7", "8"},
+			expectedSegs:  []string{"012345", "678"},
+			expectedValue: "012345678",
+		},
+		{
+			writes:        []string{"012345", "012345"},
+			expectedSegs:  []string{"012345", "012345"},
+			expectedValue: "012345012345",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			expectedSegs:  []string{"012345", "601234", "56"},
+			expectedValue: "01234560123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012012", "3456"},
+			expectedValue: "0120123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456", "abcde"},
+			seeks:         []int{0, -11, 0},
+			expectedSegs:  []string{"012abc", "de1234", "56"},
+			expectedValue: "012abcde123456",
+		},
+		{
+			writes:        []string{"0123456", "ab"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012ab5", "6"},
+			expectedValue: "012ab56",
+		},
 	})
 }
 

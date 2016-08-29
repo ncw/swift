@@ -1,6 +1,7 @@
 package swift
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/sha1"
@@ -103,6 +104,7 @@ type LargeObjectOpts struct {
 	MinChunkSize     int64   // Minimum chunk size, automatically set for SLO's based on info
 	SegmentContainer string  // Name of the container to place segments
 	SegmentPrefix    string  // Prefix to use for the segments
+	NoBuffer         bool    // Prevents using a bufio.Writer to write segments
 }
 
 type LargeObjectFile interface {
@@ -113,12 +115,12 @@ type LargeObjectFile interface {
 	Flush() error
 }
 
-// LargeObjectCreate creates a large object at opts.Container, opts.ObjectName.
+// largeObjectCreate creates a large object at opts.Container, opts.ObjectName.
 //
 // opts.Flags can have the following bits set
 //   os.TRUNC  - remove the contents of the large object if it exists
 //   os.APPEND - write at the end of the large object
-func (c *Connection) LargeObjectCreate(opts *LargeObjectOpts) (*largeObjectCreateFile, error) {
+func (c *Connection) largeObjectCreate(opts *LargeObjectOpts) (*largeObjectCreateFile, error) {
 	var (
 		segmentPath      string
 		segmentContainer string
@@ -397,4 +399,51 @@ func (file *largeObjectCreateFile) writeSegment(buf []byte, writeSegmentIdx int,
 		return nil, 0, err
 	}
 	return &Object{Name: segmentName, Bytes: int64(segmentSize), Hash: headers["Etag"]}, sizeToRead, nil
+}
+
+func withBuffer(opts *LargeObjectOpts, lo LargeObjectFile) LargeObjectFile {
+	if !opts.NoBuffer {
+		return &bufferedLargeObjectFile{
+			LargeObjectFile: lo,
+			bw:              bufio.NewWriterSize(lo, int(opts.ChunkSize)),
+		}
+	}
+	return lo
+}
+
+type bufferedLargeObjectFile struct {
+	LargeObjectFile
+	bw *bufio.Writer
+}
+
+func (blo *bufferedLargeObjectFile) Close() error {
+	err := blo.bw.Flush()
+	if err != nil {
+		return err
+	}
+	return blo.LargeObjectFile.Close()
+}
+
+func (blo *bufferedLargeObjectFile) Write(p []byte) (n int, err error) {
+	return blo.bw.Write(p)
+}
+
+func (blo *bufferedLargeObjectFile) Seek(offset int64, whence int) (int64, error) {
+	err := blo.bw.Flush()
+	if err != nil {
+		return 0, err
+	}
+	return blo.LargeObjectFile.Seek(offset, whence)
+}
+
+func (blo *bufferedLargeObjectFile) Size() int64 {
+	return blo.LargeObjectFile.Size() + int64(blo.bw.Buffered())
+}
+
+func (blo *bufferedLargeObjectFile) Flush() error {
+	err := blo.bw.Flush()
+	if err != nil {
+		return err
+	}
+	return blo.LargeObjectFile.Flush()
 }

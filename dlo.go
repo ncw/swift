@@ -12,16 +12,16 @@ type DynamicLargeObjectCreateFile struct {
 // DynamicLargeObjectCreateFile creates a dynamic large object
 // returning an object which satisfies io.Writer, io.Seeker, io.Closer
 // and io.ReaderFrom.  The flags are as passes to the
-// LargeObjectCreate method.
+// largeObjectCreate method.
 func (c *Connection) DynamicLargeObjectCreateFile(opts *LargeObjectOpts) (LargeObjectFile, error) {
-	lo, err := c.LargeObjectCreate(opts)
+	lo, err := c.largeObjectCreate(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DynamicLargeObjectCreateFile{
+	return withBuffer(opts, &DynamicLargeObjectCreateFile{
 		largeObjectCreateFile: *lo,
-	}, nil
+	}), nil
 }
 
 // DynamicLargeObjectCreate creates or truncates an existing dynamic
