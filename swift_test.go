@@ -95,6 +95,7 @@ func makeConnection(t *testing.T) (*swift.Connection, func()) {
 	if Insecure == "1" {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
+	swift.SetExpectContinueTimeout(transport, 5*time.Second)
 
 	c := swift.Connection{
 		UserName:       UserName,
@@ -807,6 +808,67 @@ func TestObjectPut(t *testing.T) {
 		t.Error(err)
 	}
 	if info.ContentType != "text/plain" {
+		t.Error("Bad content type", info.ContentType)
+	}
+	if info.Bytes != CONTENT_SIZE {
+		t.Error("Bad length")
+	}
+	if info.Hash != CONTENT_MD5 {
+		t.Error("Bad length")
+	}
+}
+
+func TestObjectPutWithReauth(t *testing.T) {
+	if !swift.IS_AT_LEAST_GO_16 {
+		return
+	}
+	c, rollback := makeConnectionWithContainer(t)
+	defer rollback()
+
+	// Simulate that our auth token expired
+	c.AuthToken = "expiredtoken"
+
+	r := strings.NewReader(CONTENTS)
+	_, err := c.ObjectPut(CONTAINER, OBJECT, r, true, "", "text/plain", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if info.ContentType != "text/plain" {
+		t.Error("Bad content type", info.ContentType)
+	}
+	if info.Bytes != CONTENT_SIZE {
+		t.Error("Bad length")
+	}
+	if info.Hash != CONTENT_MD5 {
+		t.Error("Bad length")
+	}
+}
+
+func TestObjectPutStringWithReauth(t *testing.T) {
+	if !swift.IS_AT_LEAST_GO_16 {
+		return
+	}
+	c, rollback := makeConnectionWithContainer(t)
+	defer rollback()
+
+	// Simulate that our auth token expired
+	c.AuthToken = "expiredtoken"
+
+	err := c.ObjectPutString(CONTAINER, OBJECT, CONTENTS, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if info.ContentType != "application/octet-stream" {
 		t.Error("Bad content type", info.ContentType)
 	}
 	if info.Bytes != CONTENT_SIZE {
