@@ -257,8 +257,9 @@ func (c *Connection) setDefaults() {
 		c.Transport = &http.Transport{
 			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
 			//		DisableCompression: true,
-			Proxy:               http.ProxyFromEnvironment,
-			MaxIdleConnsPerHost: 2048,
+			Proxy:                 http.ProxyFromEnvironment,
+			MaxIdleConnsPerHost:   2048,
+			ExpectContinueTimeout: 5 * time.Second,
 		}
 	}
 	if c.client == nil {
@@ -508,6 +509,12 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		}
 		req.Header.Add("User-Agent", c.UserAgent)
 		req.Header.Add("X-Auth-Token", authToken)
+		req.Header.Add("Expect", "100-continue")
+
+		if _, hasCL := p.Headers["Content-Length"]; !hasCL {
+			req.TransferEncoding = []string{"chunked"}
+		}
+
 		resp, err = c.doTimeoutRequest(timer, req)
 		if err != nil {
 			if (p.Operation == "HEAD" || p.Operation == "GET") && retries > 0 {
