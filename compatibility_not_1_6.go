@@ -9,4 +9,5 @@ import (
 
 const IS_AT_LEAST_GO_16 = false
 
-func SetExpectContinueTimeout(tr *http.Transport, t time.Duration) {}
+func SetExpectContinueTimeout(tr *http.Transport, t time.Duration)          {}
+func AddExpectAndTransferEncoding(req *http.Request, hasContentLength bool) {}

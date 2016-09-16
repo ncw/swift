@@ -12,3 +12,10 @@ const IS_AT_LEAST_GO_16 = true
 func SetExpectContinueTimeout(tr *http.Transport, t time.Duration) {
 	tr.ExpectContinueTimeout = t
 }
+
+func AddExpectAndTransferEncoding(req *http.Request, hasContentLength bool) {
+	req.Header.Add("Expect", "100-continue")
+	if !hasContentLength {
+		req.TransferEncoding = []string{"chunked"}
+	}
+}

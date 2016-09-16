@@ -510,11 +510,9 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		}
 		req.Header.Add("User-Agent", c.UserAgent)
 		req.Header.Add("X-Auth-Token", authToken)
-		req.Header.Add("Expect", "100-continue")
 
-		if _, hasCL := p.Headers["Content-Length"]; !hasCL {
-			req.TransferEncoding = []string{"chunked"}
-		}
+		_, hasCL := p.Headers["Content-Length"]
+		AddExpectAndTransferEncoding(req, hasCL)
 
 		resp, err = c.doTimeoutRequest(timer, req)
 		if err != nil {
