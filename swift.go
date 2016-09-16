@@ -254,13 +254,14 @@ func (c *Connection) setDefaults() {
 		c.Timeout = 60 * time.Second
 	}
 	if c.Transport == nil {
-		c.Transport = &http.Transport{
+		t := &http.Transport{
 			//		TLSClientConfig:    &tls.Config{RootCAs: pool},
 			//		DisableCompression: true,
-			Proxy:                 http.ProxyFromEnvironment,
-			MaxIdleConnsPerHost:   2048,
-			ExpectContinueTimeout: 5 * time.Second,
+			Proxy:               http.ProxyFromEnvironment,
+			MaxIdleConnsPerHost: 2048,
 		}
+		SetExpectContinueTimeout(t, 5*time.Second)
+		c.Transport = t
 	}
 	if c.client == nil {
 		c.client = &http.Client{

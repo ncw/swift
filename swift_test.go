@@ -87,13 +87,13 @@ func makeConnection() (*swift.Connection, error) {
 	}
 
 	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		MaxIdleConnsPerHost:   2048,
-		ExpectContinueTimeout: 5 * time.Second,
+		Proxy:               http.ProxyFromEnvironment,
+		MaxIdleConnsPerHost: 2048,
 	}
 	if Insecure == "1" {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
+	swift.SetExpectContinueTimeout(transport, 5*time.Second)
 
 	c := swift.Connection{
 		UserName:       UserName,
@@ -646,8 +646,8 @@ func TestObjectPut(t *testing.T) {
 }
 
 func TestObjectPutWithReauth(t *testing.T) {
-	if err := c.ContainerCreate(CONTAINER, m1.ContainerHeaders()); err != nil {
-		t.Fatal(err)
+	if !swift.IS_AT_LEAST_GO_16 {
+		return
 	}
 
 	// Simulate that our auth token expired
@@ -675,8 +675,8 @@ func TestObjectPutWithReauth(t *testing.T) {
 }
 
 func TestObjectPutStringWithReauth(t *testing.T) {
-	if err := c.ContainerCreate(CONTAINER, m1.ContainerHeaders()); err != nil {
-		t.Fatal(err)
+	if !swift.IS_AT_LEAST_GO_16 {
+		return
 	}
 
 	// Simulate that our auth token expired
