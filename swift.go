@@ -1339,8 +1339,11 @@ func (file *ObjectOpenFile) Seek(offset int64, whence int) (newPos int64, err er
 		if !file.lengthOk {
 			return file.pos, newError(0, "Length of file unknown so can't seek from end")
 		}
+		if offset == 0 { // fake seek to end
+			newPos = file.length
+			return
+		}
 		newPos = file.length + offset
-		return
 	default:
 		panic("Unknown whence in ObjectOpenFile.Seek")
 	}
