@@ -929,6 +929,49 @@ func TestObjectOpenSeek(t *testing.T) {
 	}
 }
 
+// Test seeking to the end to find the file size
+func TestObjectOpenSeekEnd(t *testing.T) {
+	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := file.Seek(0, 2) // seek to end
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != CONTENT_SIZE {
+		t.Fatal("Wrong offset", n)
+	}
+
+	// Now check reading returns EOF
+	buf := make([]byte, 16)
+	nn, err := io.ReadFull(file, buf)
+	if err != io.EOF {
+		t.Fatal(err)
+	}
+	if nn != 0 {
+		t.Fatal("wrong length", n)
+	}
+
+	// Now seek back to start and check we can read the file
+	n, err = file.Seek(0, 0) // seek to start
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("Wrong offset", n)
+	}
+
+	// read file and check contents
+	buf, err = ioutil.ReadAll(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(buf) != CONTENTS {
+		t.Fatal("wrong contents", string(buf))
+	}
+}
+
 func TestObjectUpdate(t *testing.T) {
 	err := c.ObjectUpdate(CONTAINER, OBJECT, m1.ObjectHeaders())
 	if err != nil {
