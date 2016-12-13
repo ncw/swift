@@ -724,6 +724,11 @@ func TestObjectCreate(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		fmt.Fprintf(out2, "%d %s\n", i, CONTENTS)
 	}
+	// Ensure Headers fails if called prematurely
+	_, err = out.Headers()
+	if err == nil {
+		t.Error("Headers should fail if called before Close()")
+	}
 	err = out.Close()
 	if err != nil {
 		t.Error(err)
@@ -735,6 +740,15 @@ func TestObjectCreate(t *testing.T) {
 	}
 	if contents != expected {
 		t.Error("Contents wrong")
+	}
+
+	// Ensure Headers succeeds when called after a good upload
+	headers, err := out.Headers()
+	if err != nil {
+		t.Error(err)
+	}
+	if len(headers) < 1 {
+		t.Error("The Headers returned by Headers() should not be empty")
 	}
 
 	// Test writing on closed file
