@@ -90,10 +90,11 @@ func makeConnection() (*swift.Connection, error) {
 		Proxy:               http.ProxyFromEnvironment,
 		MaxIdleConnsPerHost: 2048,
 	}
-	swift.SetExpectContinueTimeout(transport)
+	swift.SetExpectContinueTimeout(transport, 5*time.Second)
 	if Insecure == "1" {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
+	swift.SetExpectContinueTimeout(transport, 5*time.Second)
 
 	c := swift.Connection{
 		UserName:       UserName,
@@ -142,7 +143,7 @@ func TestTransport(t *testing.T) {
 			MaxIdleConnsPerHost: 2048,
 		},
 	}
-	swift.SetExpectContinueTimeout(&tr.Transport)
+	swift.SetExpectContinueTimeout(&tr.Transport, 5*time.Second)
 
 	Insecure := os.Getenv("SWIFT_AUTH_INSECURE")
 
@@ -642,6 +643,68 @@ func TestObjectPut(t *testing.T) {
 		t.Error("Bad length")
 	}
 	if info.Hash != CONTENT_MD5 {
+		t.Error("Bad length")
+	}
+}
+
+func TestObjectPutWithReauth(t *testing.T) {
+	if swift.DisableExpectContinue {
+		return
+	}
+
+	// Simulate that our auth token expired
+	c.AuthToken = "expiredtoken"
+
+	r := strings.NewReader(CONTENTS)
+	_, err := c.ObjectPut(CONTAINER, OBJECT, r, true, "", "text/plain", nil)
+	if err != nil {
+		if err == swift.RetryNeeded {
+			t.Log("Got RetryNeeded error - server doesn't properly support expect continue")
+			return
+		}
+		t.Fatal(err)
+	}
+
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if info.ContentType != "text/plain" {
+		t.Error("Bad content type", info.ContentType)
+	}
+	if info.Bytes != CONTENT_SIZE {
+		t.Error("Bad length")
+	}
+	if info.Hash != CONTENT_MD5 {
+		t.Error("Bad length")
+	}
+}
+
+func TestObjectPutStringWithReauth(t *testing.T) {
+	if swift.DisableExpectContinue {
+		return
+	}
+
+	// Simulate that our auth token expired
+	c.AuthToken = "expiredtoken"
+
+	err := c.ObjectPutString(CONTAINER, OBJECT, CONTENTS+CONTENTS, "")
+	if err != nil {
+		if err == swift.RetryNeeded {
+			t.Log("Got RetryNeeded error - server doesn't properly support expect continue")
+			return
+		}
+		t.Fatal(err)
+	}
+
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if info.ContentType != "application/octet-stream" {
+		t.Error("Bad content type", info.ContentType)
+	}
+	if info.Bytes != 2*CONTENT_SIZE {
 		t.Error("Bad length")
 	}
 }
