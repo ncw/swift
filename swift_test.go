@@ -16,6 +16,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"crypto/md5"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
@@ -23,7 +24,9 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +47,7 @@ var (
 
 const (
 	CONTAINER          = "GoSwiftUnitTest"
+	SEGMENTS_CONTAINER = "GoSwiftUnitTest_segments"
 	VERSIONS_CONTAINER = "GoSwiftUnitTestVersions"
 	CURRENT_CONTAINER  = "GoSwiftUnitTestCurrent"
 	OBJECT             = "test_object"
@@ -739,7 +743,7 @@ func TestObjectCreate(t *testing.T) {
 		t.Error(err)
 	}
 	if contents != expected {
-		t.Error("Contents wrong")
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
 	}
 
 	// Ensure Headers succeeds when called after a good upload
@@ -775,7 +779,7 @@ func TestObjectCreate(t *testing.T) {
 		t.Error(err)
 	}
 	if contents != expected {
-		t.Error("Contents wrong")
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
 	}
 
 	// Now with bad hash
@@ -1618,6 +1622,923 @@ func TestQueryInfo(t *testing.T) {
 	}
 	if _, ok := infos["swift"]; !ok {
 		t.Fatal("No 'swift' section found in configuration")
+	}
+}
+
+func TestDLOCreate(t *testing.T) {
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ObjectType != swift.DynamicLargeObjectType {
+		t.Errorf("Wrong ObjectType, expected %d, got: %d", swift.DynamicLargeObjectType, info.ObjectType)
+	}
+	if info.Bytes != int64(len(expected)) {
+		t.Errorf("Wrong Bytes size, expected %d, got: %d", len(expected), info.Bytes)
+	}
+}
+
+func TestDLOInsert(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		CheckHash:   true,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreateFile(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	_, err = fmt.Fprintf(multi, "%d%s\n", 0, CONTENTS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+}
+
+func TestDLOAppend(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		Flags:       os.O_APPEND,
+		CheckHash:   true,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreateFile(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	buf := bytes.NewBuffer([]byte(contents))
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		_, err = fmt.Fprintf(multi, "%d %s\n", i+10, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err = c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+}
+
+func TestDLOTruncate(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		Flags:       os.O_TRUNC,
+		CheckHash:   true,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreateFile(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	_, err = fmt.Fprintf(multi, "%s", CONTENTS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+}
+
+func TestDLOMove(t *testing.T) {
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.DynamicLargeObjectMove(CONTAINER, OBJECT, CONTAINER, OBJECT2); err != nil {
+		t.Fatal(err)
+	}
+
+	contents2, err := c.ObjectGetString(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if contents2 != contents {
+		t.Error("Contents wrong")
+	}
+
+	err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.ContainerDelete(SEGMENTS_CONTAINER); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDLONoSegmentContainer(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:        CONTAINER,
+		ObjectName:       OBJECT,
+		ContentType:      "image/jpeg",
+		SegmentContainer: CONTAINER,
+	}
+	out, err := c.DynamicLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+
+	err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDLOCreateMissingSegmentsInList(t *testing.T) {
+	if srv == nil {
+		t.Skipf("This test only runs with the fake swift server as it's needed to simulate eventual consistency problems.")
+		return
+	}
+
+	listURL := "/v1/AUTH_" + swifttest.TEST_ACCOUNT + "/" + SEGMENTS_CONTAINER
+	srv.SetOverride(listURL, func(w http.ResponseWriter, r *http.Request, recorder *httptest.ResponseRecorder) {
+		for k, v := range recorder.HeaderMap {
+			w.Header().Set(k, v[0])
+		}
+		w.WriteHeader(recorder.Code)
+		w.Write([]byte("null\n"))
+	})
+	defer srv.UnsetOverride(listURL)
+
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+
+	err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDLOCreateIncorrectSize(t *testing.T) {
+	if srv == nil {
+		t.Skipf("This test only runs with the fake swift server as it's needed to simulate eventual consistency problems.")
+		return
+	}
+
+	listURL := "/v1/AUTH_" + swifttest.TEST_ACCOUNT + "/" + CONTAINER + "/" + OBJECT
+	headCount := 0
+	expectedHeadCount := 5
+	srv.SetOverride(listURL, func(w http.ResponseWriter, r *http.Request, recorder *httptest.ResponseRecorder) {
+		for k, v := range recorder.HeaderMap {
+			w.Header().Set(k, v[0])
+		}
+		if r.Method == "HEAD" {
+			headCount++
+			if headCount < expectedHeadCount {
+				w.Header().Set("Content-Length", "7")
+			}
+		}
+		w.WriteHeader(recorder.Code)
+		w.Write(recorder.Body.Bytes())
+	})
+	defer srv.UnsetOverride(listURL)
+
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.DynamicLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	if headCount != expectedHeadCount {
+		t.Errorf("Unexpected HEAD requests count, expected %d, got: %d", expectedHeadCount, headCount)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+
+	err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDLOConcurrentWrite(t *testing.T) {
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nConcurrency := 5
+	nChunks := 100
+	var chunkSize int64 = 32 * 1024
+
+	writeFn := func(i int) {
+		objName := fmt.Sprintf("%s_concurrent_dlo_%d", OBJECT, i)
+		opts := swift.LargeObjectOpts{
+			Container:   CONTAINER,
+			ObjectName:  objName,
+			ContentType: "image/jpeg",
+		}
+		out, err := c.DynamicLargeObjectCreate(&opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf := &bytes.Buffer{}
+		for j := 0; j < nChunks; j++ {
+			data, err := ioutil.ReadAll(io.LimitReader(rand.Reader, chunkSize))
+			if err != nil {
+				t.Fatal(err)
+			}
+			multi := io.MultiWriter(buf, out)
+			n, err := multi.Write(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if int64(n) != chunkSize {
+				t.Fatalf("expected to write %d, got: %d", chunkSize, n)
+			}
+		}
+		err = out.Close()
+		if err != nil {
+			t.Error(err)
+		}
+		expected := buf.String()
+		contents, err := c.ObjectGetString(CONTAINER, objName)
+		if err != nil {
+			t.Error(err)
+		}
+		if contents != expected {
+			t.Error("Contents wrong")
+		}
+		err = c.DynamicLargeObjectDelete(CONTAINER, objName)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < nConcurrency; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			writeFn(i)
+		}(i)
+	}
+	wg.Wait()
+}
+
+func TestDLOSegmentation(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+		ChunkSize:   6,
+		NoBuffer:    true,
+	}
+
+	testSegmentation(t, func() swift.LargeObjectFile {
+		out, err := c.DynamicLargeObjectCreate(&opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}, []segmentTest{
+		{
+			writes:        []string{"0", "1", "2", "3", "4", "5", "6", "7", "8"},
+			expectedSegs:  []string{"0", "1", "2", "3", "4", "5", "6", "7", "8"},
+			expectedValue: "012345678",
+		},
+		{
+			writes:        []string{"012345", "012345"},
+			expectedSegs:  []string{"012345", "012345"},
+			expectedValue: "012345012345",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			expectedSegs:  []string{"012345", "6", "012345", "6"},
+			expectedValue: "01234560123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012012", "3456"},
+			expectedValue: "0120123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456", "abcde"},
+			seeks:         []int{0, -11, 0},
+			expectedSegs:  []string{"012abc", "d", "e12345", "6"},
+			expectedValue: "012abcde123456",
+		},
+		{
+			writes:        []string{"0123456", "ab"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012ab5", "6"},
+			expectedValue: "012ab56",
+		},
+	})
+}
+
+func TestDLOSegmentationBuffered(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+		ChunkSize:   6,
+	}
+
+	testSegmentation(t, func() swift.LargeObjectFile {
+		out, err := c.DynamicLargeObjectCreate(&opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}, []segmentTest{
+		{
+			writes:        []string{"0", "1", "2", "3", "4", "5", "6", "7", "8"},
+			expectedSegs:  []string{"012345", "678"},
+			expectedValue: "012345678",
+		},
+		{
+			writes:        []string{"012345", "012345"},
+			expectedSegs:  []string{"012345", "012345"},
+			expectedValue: "012345012345",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			expectedSegs:  []string{"012345", "6", "012345", "6"},
+			expectedValue: "01234560123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012012", "3456"},
+			expectedValue: "0120123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456", "abcde"},
+			seeks:         []int{0, -11, 0},
+			expectedSegs:  []string{"012abc", "d", "e12345", "6"},
+			expectedValue: "012abcde123456",
+		},
+		{
+			writes:        []string{"0123456", "ab"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012ab5", "6"},
+			expectedValue: "012ab56",
+		},
+	})
+}
+
+func TestSLOCreate(t *testing.T) {
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.StaticLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+	info, _, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ObjectType != swift.StaticLargeObjectType {
+		t.Errorf("Wrong ObjectType, expected %d, got: %d", swift.StaticLargeObjectType, info.ObjectType)
+	}
+	if info.Bytes != int64(len(expected)) {
+		t.Errorf("Wrong Bytes size, expected %d, got: %d", len(expected), info.Bytes)
+	}
+}
+
+func TestSLOInsert(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.StaticLargeObjectCreateFile(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	_, err = fmt.Fprintf(multi, "%d%s\n", 0, CONTENTS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+}
+
+func TestSLOAppend(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:   CONTAINER,
+		ObjectName:  OBJECT,
+		Flags:       os.O_APPEND,
+		CheckHash:   true,
+		ContentType: "image/jpeg",
+	}
+	out, err := c.StaticLargeObjectCreateFile(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	buf := bytes.NewBuffer([]byte(contents))
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		_, err = fmt.Fprintf(multi, "%d %s\n", i+10, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err = c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+}
+
+func TestSLOMove(t *testing.T) {
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.StaticLargeObjectMove(CONTAINER, OBJECT, CONTAINER, OBJECT2); err != nil {
+		t.Fatal(err)
+	}
+
+	contents2, err := c.ObjectGetString(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if contents2 != contents {
+		t.Error("Contents wrong")
+	}
+
+	err = c.StaticLargeObjectDelete(CONTAINER, OBJECT2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.ContainerDelete(SEGMENTS_CONTAINER); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSLONoSegmentContainer(t *testing.T) {
+	headers := swift.Headers{}
+	err := c.ContainerCreate(CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := swift.LargeObjectOpts{
+		Container:        CONTAINER,
+		ObjectName:       OBJECT,
+		ContentType:      "image/jpeg",
+		SegmentContainer: CONTAINER,
+	}
+	out, err := c.StaticLargeObjectCreate(&opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	multi := io.MultiWriter(buf, out)
+	for i := 0; i < 2; i++ {
+		_, err = fmt.Fprintf(multi, "%d %s\n", i, CONTENTS)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = out.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	expected := buf.String()
+	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if contents != expected {
+		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
+	}
+
+	err = c.StaticLargeObjectDelete(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSLOMinChunkSize(t *testing.T) {
+	if srv == nil {
+		t.Skipf("This test only runs with the fake swift server as it's needed to simulate min segment size.")
+		return
+	}
+
+	srv.SetOverride("/info", func(w http.ResponseWriter, r *http.Request, recorder *httptest.ResponseRecorder) {
+		w.Write([]byte(`{"slo": {"min_segment_size": 4}}`))
+	})
+	defer srv.UnsetOverride("/info")
+	c.QueryInfo()
+
+	opts := swift.LargeObjectOpts{
+		Container:    CONTAINER,
+		ObjectName:   OBJECT,
+		ContentType:  "image/jpeg",
+		ChunkSize:    6,
+		MinChunkSize: 0,
+		NoBuffer:     true,
+	}
+
+	testSLOSegmentation(t, func() swift.LargeObjectFile {
+		out, err := c.StaticLargeObjectCreate(&opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	})
+
+}
+
+func TestSLOSegmentation(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:    CONTAINER,
+		ObjectName:   OBJECT,
+		ContentType:  "image/jpeg",
+		ChunkSize:    6,
+		MinChunkSize: 4,
+		NoBuffer:     true,
+	}
+	testSLOSegmentation(t, func() swift.LargeObjectFile {
+		out, err := c.StaticLargeObjectCreate(&opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	})
+}
+
+func TestSLOSegmentationBuffered(t *testing.T) {
+	opts := swift.LargeObjectOpts{
+		Container:    CONTAINER,
+		ObjectName:   OBJECT,
+		ContentType:  "image/jpeg",
+		ChunkSize:    6,
+		MinChunkSize: 4,
+	}
+	testSegmentation(t, func() swift.LargeObjectFile {
+		out, err := c.StaticLargeObjectCreate(&opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}, []segmentTest{
+		{
+			writes:        []string{"0", "1", "2", "3", "4", "5", "6", "7", "8"},
+			expectedSegs:  []string{"012345", "678"},
+			expectedValue: "012345678",
+		},
+		{
+			writes:        []string{"012345", "012345"},
+			expectedSegs:  []string{"012345", "012345"},
+			expectedValue: "012345012345",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			expectedSegs:  []string{"012345", "601234", "56"},
+			expectedValue: "01234560123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012012", "3456"},
+			expectedValue: "0120123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456", "abcde"},
+			seeks:         []int{0, -11, 0},
+			expectedSegs:  []string{"012abc", "de1234", "56"},
+			expectedValue: "012abcde123456",
+		},
+		{
+			writes:        []string{"0123456", "ab"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012ab5", "6"},
+			expectedValue: "012ab56",
+		},
+	})
+}
+
+func testSLOSegmentation(t *testing.T, createObj func() swift.LargeObjectFile) {
+	testCases := []segmentTest{
+		{
+			writes:        []string{"0", "1", "2", "3", "4", "5", "6", "7", "8"},
+			expectedSegs:  []string{"0123", "4567", "8"},
+			expectedValue: "012345678",
+		},
+		{
+			writes:        []string{"012345", "012345"},
+			expectedSegs:  []string{"012345", "012345"},
+			expectedValue: "012345012345",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			expectedSegs:  []string{"012345", "601234", "56"},
+			expectedValue: "01234560123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012012", "3456"},
+			expectedValue: "0120123456",
+		},
+		{
+			writes:        []string{"0123456", "0123456", "abcde"},
+			seeks:         []int{0, -11, 0},
+			expectedSegs:  []string{"012abc", "de1234", "56"},
+			expectedValue: "012abcde123456",
+		},
+		{
+			writes:        []string{"0123456", "ab"},
+			seeks:         []int{-4, 0},
+			expectedSegs:  []string{"012ab5", "6"},
+			expectedValue: "012ab56",
+		},
+	}
+	testSegmentation(t, createObj, testCases)
+}
+
+type segmentTest struct {
+	writes        []string
+	seeks         []int
+	expectedSegs  []string
+	expectedValue string
+}
+
+func testSegmentation(t *testing.T, createObj func() swift.LargeObjectFile, testCases []segmentTest) {
+	headers := swift.Headers{}
+	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tCase := range testCases {
+		out := createObj()
+		for i, data := range tCase.writes {
+			_, err = fmt.Fprint(out, data)
+			if err != nil {
+				t.Error(err)
+			}
+			if i < len(tCase.seeks)-1 {
+				_, err = out.Seek(int64(tCase.seeks[i]), os.SEEK_CUR)
+				if err != nil {
+					t.Error(err)
+				}
+			}
+		}
+		err = out.Close()
+		if err != nil {
+			t.Error(err)
+		}
+		contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+		if err != nil {
+			t.Error(err)
+		}
+		if contents != tCase.expectedValue {
+			t.Errorf("Contents wrong, expected %q, got: %q", tCase.expectedValue, contents)
+		}
+
+		container, objects, err := c.LargeObjectGetSegments(CONTAINER, OBJECT)
+		if err != nil {
+			t.Error(err)
+		}
+		if container != SEGMENTS_CONTAINER {
+			t.Errorf("Segments container wrong, expected %q, got: %q", SEGMENTS_CONTAINER, container)
+		}
+		var segContents []string
+		for _, obj := range objects {
+			value, err := c.ObjectGetString(SEGMENTS_CONTAINER, obj.Name)
+			if err != nil {
+				t.Error(err)
+			}
+			segContents = append(segContents, value)
+		}
+		if !reflect.DeepEqual(segContents, tCase.expectedSegs) {
+			t.Errorf("Segments wrong, expected %#v, got: %#v", tCase.expectedSegs, segContents)
+		}
+	}
+
+	err = c.LargeObjectDelete(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = c.ContainerDelete(SEGMENTS_CONTAINER)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
