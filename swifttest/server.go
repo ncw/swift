@@ -1057,21 +1057,10 @@ func (rootResource) delete(a *action) interface{} {
 func (rootResource) copy(a *action) interface{} { return notAllowed() }
 
 func NewSwiftServer(address string) (*SwiftServer, error) {
-	var (
-		l   net.Listener
-		err error
-	)
 	if strings.Index(address, ":") == -1 {
-		for port := 1024; port < 65535; port++ {
-			addr := fmt.Sprintf("%s:%d", address, port)
-			if l, err = net.Listen("tcp", addr); err == nil {
-				address = addr
-				break
-			}
-		}
-	} else {
-		l, err = net.Listen("tcp", address)
+		address += ":0"
 	}
+	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("cannot listen on %s: %v", address, err)
 	}
