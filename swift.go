@@ -444,8 +444,12 @@ func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
 		return nil, err
 	}
 	infoUrl.Path = path.Join(infoUrl.Path, "..", "..", "info")
-	resp, err := http.Get(infoUrl.String())
+	resp, err := c.client.Get(infoUrl.String())
 	if err == nil {
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("Invalid status code for info request: %d", resp.StatusCode)
+		}
 		err = readJson(resp, &infos)
 		if err == nil {
 			c.authLock.Lock()

@@ -39,10 +39,7 @@ type swiftSegment struct {
 // method.
 func (c *Connection) StaticLargeObjectCreateFile(opts *LargeObjectOpts) (LargeObjectFile, error) {
 	info, err := c.cachedQueryInfo()
-	if err != nil {
-		return nil, err
-	}
-	if !info.SupportsSLO() {
+	if err != nil || !info.SupportsSLO() {
 		return nil, SLONotSupported
 	}
 	realMinChunkSize := info.SLOMinSegmentSize()
@@ -69,10 +66,7 @@ func (c *Connection) StaticLargeObjectCreate(opts *LargeObjectOpts) (LargeObject
 // StaticLargeObjectDelete deletes a static large object and all of its segments.
 func (c *Connection) StaticLargeObjectDelete(container string, path string) error {
 	info, err := c.cachedQueryInfo()
-	if err != nil {
-		return err
-	}
-	if !info.SupportsSLO() {
+	if err != nil || !info.SupportsSLO() {
 		return SLONotSupported
 	}
 	return c.LargeObjectDelete(container, path)
@@ -81,10 +75,7 @@ func (c *Connection) StaticLargeObjectDelete(container string, path string) erro
 // StaticLargeObjectMove moves a static large object from srcContainer, srcObjectName to dstContainer, dstObjectName
 func (c *Connection) StaticLargeObjectMove(srcContainer string, srcObjectName string, dstContainer string, dstObjectName string) error {
 	swiftInfo, err := c.cachedQueryInfo()
-	if err != nil {
-		return err
-	}
-	if !swiftInfo.SupportsSLO() {
+	if err != nil || !swiftInfo.SupportsSLO() {
 		return SLONotSupported
 	}
 	info, headers, err := c.Object(srcContainer, srcObjectName)

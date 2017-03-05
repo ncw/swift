@@ -259,6 +259,10 @@ func makeConnectionWithSLO(t *testing.T) (*swift.Connection, func()) {
 	}
 	out, err := c.StaticLargeObjectCreate(&opts)
 	if err != nil {
+		if err == swift.SLONotSupported {
+			t.Skip("SLO not supported")
+			return c, rollback
+		}
 		t.Fatal(err)
 	}
 	for i := 0; i < 2; i++ {
@@ -2434,6 +2438,10 @@ func TestSLOCreate(t *testing.T) {
 	}
 	out, err := c.StaticLargeObjectCreate(&opts)
 	if err != nil {
+		if err == swift.SLONotSupported {
+			t.Skip("SLO not supported")
+			return
+		}
 		t.Fatal(err)
 	}
 	defer func() {
@@ -2664,6 +2672,9 @@ func TestSLOSegmentation(t *testing.T) {
 	testSLOSegmentation(t, c, func() swift.LargeObjectFile {
 		out, err := c.StaticLargeObjectCreate(&opts)
 		if err != nil {
+			if err == swift.SLONotSupported {
+				t.Skip("SLO not supported")
+			}
 			t.Fatal(err)
 		}
 		return out
@@ -2683,6 +2694,9 @@ func TestSLOSegmentationBuffered(t *testing.T) {
 	testSegmentation(t, c, func() swift.LargeObjectFile {
 		out, err := c.StaticLargeObjectCreate(&opts)
 		if err != nil {
+			if err == swift.SLONotSupported {
+				t.Skip("SLO not supported")
+			}
 			t.Fatal(err)
 		}
 		return out
