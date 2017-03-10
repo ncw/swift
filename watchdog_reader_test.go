@@ -90,7 +90,7 @@ func (r *slowReader) Read(p []byte) (n int, err error) {
 //that comes in very slowly. (It should only be triggered if no data arrives at
 //all.)
 func TestWatchdogReaderOnSlowNetwork(t *testing.T) {
-	byteString := make([]byte, 4<<20) //4 MiB
+	byteString := make([]byte, 4*watchdogChunkSize)
 	reader := &slowReader{
 		reader: bytes.NewReader(byteString),
 		//reading everything at once would take 100 ms, which is longer than the

@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+var watchdogChunkSize = 1 << 20 // 1 MiB
+
 // An io.Reader which resets a watchdog timer whenever data is read
 type watchdogReader struct {
 	timeout time.Duration
@@ -23,9 +25,14 @@ func newWatchdogReader(reader io.Reader, timeout time.Duration, timer *time.Time
 
 // Read reads up to len(p) bytes into p
 func (t *watchdogReader) Read(p []byte) (n int, err error) {
-	// FIXME limit the amount of data read in one chunk so as to not exceed the timeout?
+	//never read more bytes than watchdogChunkSize
+	readTarget := p
+	if len(p) > watchdogChunkSize {
+		readTarget = p[0:watchdogChunkSize]
+	}
+
 	resetTimer(t.timer, t.timeout)
-	n, err = t.reader.Read(p)
+	n, err = t.reader.Read(readTarget)
 	resetTimer(t.timer, t.timeout)
 	return
 }
