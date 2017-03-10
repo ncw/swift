@@ -90,16 +90,16 @@ func (r *slowReader) Read(p []byte) (n int, err error) {
 //that comes in very slowly. (It should only be triggered if no data arrives at
 //all.)
 func TestWatchdogReaderOnSlowNetwork(t *testing.T) {
-	byteString := make([]byte, 4*watchdogChunkSize)
+	byteString := make([]byte, 8*watchdogChunkSize)
 	reader := &slowReader{
 		reader: bytes.NewReader(byteString),
 		//reading everything at once would take 100 ms, which is longer than the
 		//watchdog timeout below
-		delayPerByte: 100 * time.Millisecond / time.Duration(len(byteString)),
+		delayPerByte: 200 * time.Millisecond / time.Duration(len(byteString)),
 	}
 
 	timer, firedChan := setupTimer(10 * time.Millisecond)
-	wr := newWatchdogReader(reader, 50*time.Millisecond, timer)
+	wr := newWatchdogReader(reader, 190*time.Millisecond, timer)
 
 	//use io.ReadFull instead of ioutil.ReadAll here because ReadAll already does
 	//some chunking that would keep this testcase from failing
