@@ -24,17 +24,29 @@ func newWatchdogReader(reader io.Reader, timeout time.Duration, timer *time.Time
 }
 
 // Read reads up to len(p) bytes into p
-func (t *watchdogReader) Read(p []byte) (n int, err error) {
-	//never read more bytes than watchdogChunkSize
-	readTarget := p
-	if len(p) > watchdogChunkSize {
-		readTarget = p[0:watchdogChunkSize]
+func (t *watchdogReader) Read(p []byte) (int, error) {
+	//read from underlying reader in chunks not larger than watchdogChunkSize
+	//while resetting the watchdog timer before every read; the small chunk
+	//size ensures that the timer does not fire when reading a large amount of
+	//data from a slow connection
+	start := 0
+	end := len(p)
+	for start < end {
+		length := end - start
+		if length > watchdogChunkSize {
+			length = watchdogChunkSize
+		}
+
+		resetTimer(t.timer, t.timeout)
+		n, err := t.reader.Read(p[start:length])
+		start += n
+		if n == 0 || err != nil {
+			return start, err
+		}
 	}
 
 	resetTimer(t.timer, t.timeout)
-	n, err = t.reader.Read(readTarget)
-	resetTimer(t.timer, t.timeout)
-	return
+	return start, nil
 }
 
 // Check it satisfies the interface
