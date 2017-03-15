@@ -40,7 +40,7 @@ func (t *watchdogReader) Read(p []byte) (int, error) {
 		}
 
 		resetTimer(t.timer, t.timeout)
-		n, err := t.reader.Read(p[start:length])
+		n, err := t.reader.Read(p[start : start+length])
 		start += n
 		if n == 0 || err != nil {
 			return start, err
