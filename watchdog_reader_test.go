@@ -111,3 +111,27 @@ func TestWatchdogReaderOnSlowNetwork(t *testing.T) {
 
 	checkTimer(t, firedChan, false)
 }
+
+//This test verifies that the watchdogReader's chunking logic does not mess up
+//the byte strings that are read.
+func TestWatchdogReaderValidity(t *testing.T) {
+	byteString := []byte("abcdefghij")
+	//make a reader with a non-standard chunk size (1 MiB would be much too huge
+	//to comfortably look at the bytestring that comes out of the reader)
+	wr := &watchdogReader{
+		reader:    bytes.NewReader(byteString),
+		chunkSize: 3, //len(byteString) % chunkSize != 0 to be extra rude :)
+		//don't care about the timeout stuff here
+		timeout: 5 * time.Minute,
+		timer:   time.NewTimer(5 * time.Minute),
+	}
+
+	b := make([]byte, len(byteString))
+	n, err := io.ReadFull(wr, b)
+	if err != nil || n != len(b) {
+		t.Fatal("Read error: %s", err)
+	}
+	if !bytes.Equal(b, byteString) {
+		t.Fatal("Bad read: %#v != %#v", string(b), string(byteString))
+	}
+}
