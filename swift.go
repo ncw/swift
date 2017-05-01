@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"io/ioutil"
 	"mime"
 	"net/http"
 	"net/url"
@@ -202,6 +203,12 @@ func checkClose(c io.Closer, err *error) {
 func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error {
 	if errorMap != nil {
 		if err, ok := errorMap[resp.StatusCode]; ok {
+			if resp.Body != nil {
+				// drain the body before returning an error, so the connection can
+				// be reused
+				_, _ = io.Copy(ioutil.Discard, resp.Body)
+			}
+
 			return err
 		}
 	}
