@@ -190,29 +190,37 @@ var (
 )
 
 // checkClose is used to check the return from Close in a defer
-// statement.
-func checkClose(c io.Closer, err *error) {
-	cerr := c.Close()
+// statement. The reader is also drained.
+func checkClose(rd io.ReadCloser, err *error) {
+	derr := drainAndClose(rd)
 	if *err == nil {
-		*err = cerr
+		*err = derr
 	}
 }
 
+// drainAndClose discards all data from rd and closes it.
+// If an error occurs during Read, it is discarded.
+func drainAndClose(rd io.ReadCloser) error {
+	if rd == nil {
+		return nil
+	}
+
+	_, _ = io.Copy(ioutil.Discard, rd)
+	return rd.Close()
+}
+
 // parseHeaders checks a response for errors and translates into
-// standard errors if necessary.
+// standard errors if necessary. If an error is returned, resp.Body
+// has been drained and closed.
 func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error {
 	if errorMap != nil {
 		if err, ok := errorMap[resp.StatusCode]; ok {
-			if resp.Body != nil {
-				// drain the body before returning an error, so the connection can
-				// be reused
-				_, _ = io.Copy(ioutil.Discard, resp.Body)
-			}
-
+			_ = drainAndClose(resp.Body)
 			return err
 		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		_ = drainAndClose(resp.Body)
 		return newErrorf(resp.StatusCode, "HTTP Error: %d: %s", resp.StatusCode, resp.Status)
 	}
 	return nil
@@ -454,7 +462,7 @@ func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
 	resp, err := c.client.Get(infoUrl.String())
 	if err == nil {
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			_ = drainAndClose(resp.Body)
 			return nil, fmt.Errorf("Invalid status code for info request: %d", resp.StatusCode)
 		}
 		err = readJson(resp, &infos)
@@ -504,6 +512,7 @@ type RequestOpts struct {
 // Any other parameters (if not None) are added to the targetUrl
 //
 // Returns a response or an error.  If response is returned then
+// the resp.Body must be read completely and
 // resp.Body.Close() must be called on it, unless noResponse is set in
 // which case the body will be closed in this function
 //
@@ -578,7 +587,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		}
 		// Check to see if token has expired
 		if resp.StatusCode == 401 && retries > 0 {
-			_ = resp.Body.Close()
+			_ = drainAndClose(resp.Body)
 			c.UnAuthenticate()
 			retries--
 		} else {
@@ -587,12 +596,11 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 	}
 
 	if err = c.parseHeaders(resp, p.ErrorMap); err != nil {
-		_ = resp.Body.Close()
 		return nil, nil, err
 	}
 	headers = readHeaders(resp)
 	if p.NoResponse {
-		err = resp.Body.Close()
+		err = drainAndClose(resp.Body)
 		if err != nil {
 			return nil, nil, err
 		}
