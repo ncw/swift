@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"io/ioutil"
 	"mime"
 	"net/http"
 	"net/url"
@@ -197,15 +198,27 @@ func checkClose(c io.Closer, err *error) {
 	}
 }
 
+// drainAndClose discards all data from rd and closes it.
+// If an error occurs during Read, it is discarded.
+func drainAndClose(rd io.ReadCloser) error {
+	if rd == nil {
+		return nil
+	}
+	_, _ = io.Copy(ioutil.Discard, rd)
+	return rd.Close()
+}
+
 // parseHeaders checks a response for errors and translates into
 // standard errors if necessary.
 func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error {
 	if errorMap != nil {
 		if err, ok := errorMap[resp.StatusCode]; ok {
+			drainAndClose(resp.Body)
 			return err
 		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		drainAndClose(resp.Body)
 		return newErrorf(resp.StatusCode, "HTTP Error: %d: %s", resp.StatusCode, resp.Status)
 	}
 	return nil
@@ -324,7 +337,7 @@ again:
 			return
 		}
 		defer func() {
-			checkClose(resp.Body, &err)
+			drainAndClose(resp.Body)
 			// Flush the auth connection - we don't want to keep
 			// it open if keepalives were enabled
 			flushKeepaliveConnections(c.Transport)
@@ -447,7 +460,7 @@ func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
 	resp, err := c.client.Get(infoUrl.String())
 	if err == nil {
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			drainAndClose(resp.Body)
 			return nil, fmt.Errorf("Invalid status code for info request: %d", resp.StatusCode)
 		}
 		err = readJson(resp, &infos)
@@ -571,7 +584,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		}
 		// Check to see if token has expired
 		if resp.StatusCode == 401 && retries > 0 {
-			_ = resp.Body.Close()
+			drainAndClose(resp.Body)
 			c.UnAuthenticate()
 			retries--
 		} else {
@@ -580,12 +593,11 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 	}
 
 	if err = c.parseHeaders(resp, p.ErrorMap); err != nil {
-		_ = resp.Body.Close()
 		return nil, nil, err
 	}
 	headers = readHeaders(resp)
 	if p.NoResponse {
-		err = resp.Body.Close()
+		err = drainAndClose(resp.Body)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -627,7 +639,7 @@ func (c *Connection) storage(p RequestOpts) (resp *http.Response, headers Header
 //
 // Closes the response when done
 func readLines(resp *http.Response) (lines []string, err error) {
-	defer checkClose(resp.Body, &err)
+	defer drainAndClose(resp.Body)
 	reader := bufio.NewReader(resp.Body)
 	buffer := bytes.NewBuffer(make([]byte, 0, 128))
 	var part []byte
@@ -652,7 +664,7 @@ func readLines(resp *http.Response) (lines []string, err error) {
 //
 // Closes the response when done
 func readJson(resp *http.Response, result interface{}) (err error) {
-	defer checkClose(resp.Body, &err)
+	defer drainAndClose(resp.Body)
 	decoder := json.NewDecoder(resp.Body)
 	return decoder.Decode(result)
 }
