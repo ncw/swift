@@ -214,15 +214,19 @@ func TestInternalError(t *testing.T) {
 
 }
 
-func testCheckClose(c io.Closer, e error) (err error) {
+func testCheckClose(rd io.ReadCloser, e error) (err error) {
 	err = e
-	defer checkClose(c, &err)
+	defer checkClose(rd, &err)
 	return
 }
 
 // Make a closer which returns the error of our choice
 type myCloser struct {
 	err error
+}
+
+func (c *myCloser) Read([]byte) (int, error) {
+	return 0, io.EOF
 }
 
 func (c *myCloser) Close() error {
