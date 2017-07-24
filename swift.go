@@ -1530,6 +1530,15 @@ type ObjectOpenFile struct {
 	overSeeked bool           // set if we have seeked to the end or beyond
 }
 
+//StatusCode returns the HTTP status code that Swift returned when this file
+//was opened for reading. If at least one of the If-None-Match or
+//If-Last-Modified headers were specified during opening, this code may be 304
+//to indicate that the file was not modified, in which case Read() will not
+//return any bytes.
+func (file *ObjectOpenFile) StatusCode() int {
+	return file.resp.StatusCode
+}
+
 // Read bytes from the object - see io.Reader
 func (file *ObjectOpenFile) Read(p []byte) (n int, err error) {
 	if file.overSeeked {
