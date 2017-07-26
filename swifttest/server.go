@@ -539,8 +539,15 @@ func (objr objectResource) get(a *action) interface{} {
 		reader = bytes.NewReader(obj.data[start : end+1])
 	}
 
+	etagHex := hex.EncodeToString(etag)
+
+	if a.req.Header.Get("If-None-Match") == etagHex {
+		a.w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
+
 	h.Set("Content-Length", fmt.Sprint(end-start+1))
-	h.Set("ETag", hex.EncodeToString(etag))
+	h.Set("ETag", etagHex)
 	h.Set("Last-Modified", obj.mtime.Format(http.TimeFormat))
 
 	if a.req.Method == "HEAD" {

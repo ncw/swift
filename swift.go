@@ -284,6 +284,7 @@ type errorMap map[int]error
 
 var (
 	// Specific Errors you might want to check for equality
+	NotModified         = newError(304, "Not Modified")
 	BadRequest          = newError(400, "Bad Request")
 	AuthorizationFailed = newError(401, "Authorization Failed")
 	ContainerNotFound   = newError(404, "Container Not Found")
@@ -311,6 +312,7 @@ var (
 
 	// Mappings for object errors
 	objectErrorMap = errorMap{
+		304: NotModified,
 		400: BadRequest,
 		403: Forbidden,
 		404: ObjectNotFound,
@@ -1528,15 +1530,6 @@ type ObjectOpenFile struct {
 	length     int64          // length of the object if read
 	seeked     bool           // whether we have seeked this file or not
 	overSeeked bool           // set if we have seeked to the end or beyond
-}
-
-//StatusCode returns the HTTP status code that Swift returned when this file
-//was opened for reading. If at least one of the If-None-Match or
-//If-Last-Modified headers were specified during opening, this code may be 304
-//to indicate that the file was not modified, in which case Read() will not
-//return any bytes.
-func (file *ObjectOpenFile) StatusCode() int {
-	return file.resp.StatusCode
 }
 
 // Read bytes from the object - see io.Reader
