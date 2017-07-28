@@ -47,7 +47,7 @@ type SwiftServer struct {
 	// `sync/atomic` expects the first word in an allocated struct to be 64-bit
 	// aligned on both ARM and x86-32.
 	// See https://golang.org/pkg/sync/atomic/#pkg-note-BUG for more details.
-	reqId    int64
+	reqId int64
 	sync.RWMutex
 	t        *testing.T
 	mu       sync.Mutex
@@ -127,7 +127,7 @@ type container struct {
 	// `sync/atomic` expects the first word in an allocated struct to be 64-bit
 	// aligned on both ARM and x86-32.
 	// See https://golang.org/pkg/sync/atomic/#pkg-note-BUG for more details.
-	bytes   int64
+	bytes int64
 	sync.RWMutex
 	metadata
 	name    string
