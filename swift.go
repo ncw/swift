@@ -1850,8 +1850,9 @@ func (c *Connection) doBulkDelete(objects []string) (result BulkDeleteResult, er
 		Operation:  "DELETE",
 		Parameters: url.Values{"bulk-delete": []string{"1"}},
 		Headers: Headers{
-			"Accept":       "application/json",
-			"Content-Type": "text/plain",
+			"Accept":         "application/json",
+			"Content-Type":   "text/plain",
+			"Content-Length": strconv.Itoa(buffer.Len()),
 		},
 		ErrorMap: ContainerErrorMap,
 		Body:     &buffer,
