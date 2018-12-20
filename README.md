@@ -151,3 +151,4 @@ Contributors
 - Bruno Michel <bmichel@menfin.info>
 - Charles Hsu <charles0126@gmail.com>
 - Omar Ali <omarali@users.noreply.github.com>
+- Andreas Andersen <andreas@softwaredesign.se>
