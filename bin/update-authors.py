@@ -15,7 +15,7 @@ def load():
     """
     with open(AUTHORS) as fd:
         authors = fd.read()
-    emails = set(re.findall(r"<(.*?)>", authors))
+    emails = set(re.findall(r"<(?!!--)(.*?)>", authors))
     emails.update(IGNORE)
     return emails
 
