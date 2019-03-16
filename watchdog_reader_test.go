@@ -98,7 +98,7 @@ func TestWatchdogReaderOnSlowNetwork(t *testing.T) {
 		delayPerByte: 200 * time.Millisecond / time.Duration(len(byteString)),
 	}
 
-	timer, firedChan := setupTimer(10 * time.Millisecond)
+	timer, firedChan := setupTimer(100 * time.Millisecond)
 	wr := newWatchdogReader(reader, 190*time.Millisecond, timer)
 
 	//use io.ReadFull instead of ioutil.ReadAll here because ReadAll already does
