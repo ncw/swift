@@ -307,6 +307,7 @@ var (
 	Forbidden           = newError(403, "Operation forbidden")
 	TooLargeObject      = newError(413, "Too Large Object")
 	RateLimit           = newError(498, "Rate Limit")
+	TooManyRequests     = newError(429, "TooManyRequests")
 
 	// Mappings for authentication errors
 	authErrorMap = errorMap{
@@ -332,6 +333,7 @@ var (
 		404: ObjectNotFound,
 		413: TooLargeObject,
 		422: ObjectCorrupted,
+		429: TooManyRequests,
 		498: RateLimit,
 	}
 )
@@ -754,10 +756,10 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		}
 	}
 
-	if err = c.parseHeaders(resp, p.ErrorMap); err != nil {
-		return nil, nil, err
-	}
 	headers = readHeaders(resp)
+	if err = c.parseHeaders(resp, p.ErrorMap); err != nil {
+		return nil, headers, err
+	}
 	if p.NoResponse {
 		var err error
 		drainAndClose(resp.Body, &err)
