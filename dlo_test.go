@@ -2,7 +2,7 @@ package swift
 
 import (
 	"bytes"
-	"./swifttest"
+	"github.com/ncw/swift/swifttest"
 	"net/http"
 	"testing"
 	"time"
