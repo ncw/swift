@@ -32,8 +32,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/ncw/swift"
 )
 
 const (
@@ -104,9 +102,15 @@ type metadata struct {
 	meta http.Header // metadata to return with requests.
 }
 
+type swiftaccount struct {
+	BytesUsed  int64 // total number of bytes used
+	Containers int64 // total number of containers
+	Objects    int64 // total number of objects
+}
+
 type account struct {
 	sync.RWMutex
-	swift.Account
+	swiftaccount
 	metadata
 	password       string
 	ContainersLock sync.RWMutex
@@ -338,7 +342,7 @@ func (r containerResource) delete(a *action) interface{} {
 	}
 	a.user.Lock()
 	delete(a.user.Containers, b.name)
-	a.user.Account.Containers--
+	a.user.swiftaccount.Containers--
 	a.user.Unlock()
 	return nil
 }
@@ -363,7 +367,7 @@ func (r containerResource) put(a *action) interface{} {
 
 		a.user.Lock()
 		a.user.Containers[r.name] = r.container
-		a.user.Account.Containers++
+		a.user.swiftaccount.Containers++
 		a.user.Unlock()
 	}
 
@@ -812,7 +816,7 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if req.URL.String() == "/info" {
-		jsonMarshal(w, &swift.SwiftInfo{
+		jsonMarshal(w, &map[string]interface{}{
 			"swift": map[string]interface{}{
 				"version": "1.2",
 			},
@@ -1007,7 +1011,7 @@ func (rootResource) get(a *action) interface{} {
 	h := a.w.Header()
 
 	h.Set("X-Account-Bytes-Used", strconv.Itoa(int(atomic.LoadInt64(&a.user.BytesUsed))))
-	h.Set("X-Account-Container-Count", strconv.Itoa(int(atomic.LoadInt64(&a.user.Account.Containers))))
+	h.Set("X-Account-Container-Count", strconv.Itoa(int(atomic.LoadInt64(&a.user.swiftaccount.Containers))))
 	h.Set("X-Account-Object-Count", strconv.Itoa(int(atomic.LoadInt64(&a.user.Objects))))
 
 	a.user.RLock()

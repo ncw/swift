@@ -39,7 +39,7 @@ func (c *Connection) DynamicLargeObjectDelete(container string, path string) err
 
 // DynamicLargeObjectMove moves a dynamic large object from srcContainer, srcObjectName to dstContainer, dstObjectName
 func (c *Connection) DynamicLargeObjectMove(srcContainer string, srcObjectName string, dstContainer string, dstObjectName string) error {
-	info, headers, err := c.Object(dstContainer, srcObjectName)
+	info, headers, err := c.Object(srcContainer, srcObjectName)
 	if err != nil {
 		return err
 	}
