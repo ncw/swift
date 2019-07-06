@@ -69,6 +69,9 @@ func sanitizeLargeObjectMoveHeaders(headers Headers) Headers {
 
 // createDLOManifest creates a dynamic large object manifest
 func (c *Connection) createDLOManifest(container string, objectName string, prefix string, contentType string, headers Headers) error {
+	if headers == nil {
+		headers = make(Headers)
+	}
 	headers["X-Object-Manifest"] = prefix
 	manifest, err := c.ObjectCreate(container, objectName, false, "", contentType, headers)
 	if err != nil {
