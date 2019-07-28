@@ -12,7 +12,7 @@ var srv *swifttest.SwiftServer
 var con *Connection
 var err error
 var filecontent = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-var segmentContainer = "segment_container"
+var segmentContainer = "segment_container112"
 
 func initTest(t *testing.T) {
 	con, err = initTestConnection(t)
@@ -26,6 +26,7 @@ func teardown() {
 		srv.Close()
 	}
 }
+
 func initTestConnection(t *testing.T) (*Connection, error) {
 	//Uses /swifttest
 	//in-memory implementation to start
@@ -71,14 +72,16 @@ func createContainers(containers []string, t *testing.T) {
 }
 
 func createDynamicObject(container, object string, t *testing.T) {
+	metadata := map[string]string{}
+	metadata["Custom-Field"] = "SomeValue"
 	ops := LargeObjectOpts{
-		Container:        container,                                     // Name of container to place object
-		ObjectName:       object,                                        // Name of object
-		CheckHash:        false,                                         // If set Check the hash
-		ContentType:      "application/octet-stream",                    // Content-Type of the object
-		Headers:          Metadata(map[string]string{}).ObjectHeaders(), // Additional headers to upload the object with
-		SegmentContainer: segmentContainer,                              // Name of the container to place segments
-		SegmentPrefix:    "sg",                                          // Prefix to use for the segments
+		Container:        container,                          // Name of container to place object
+		ObjectName:       object,                             // Name of object
+		CheckHash:        false,                              // If set Check the hash
+		ContentType:      "application/octet-stream",         // Content-Type of the object
+		Headers:          Metadata(metadata).ObjectHeaders(), // Additional headers to upload the object with
+		SegmentContainer: segmentContainer,                   // Name of the container to place segments
+		SegmentPrefix:    "sg",                               // Prefix to use for the segments
 	}
 	bigfile, err := con.DynamicLargeObjectCreate(&ops)
 	if err != nil {
@@ -99,6 +102,10 @@ func checkObject(container, object string, t *testing.T) {
 	if info.Bytes != 10 {
 		t.Errorf("Fail: mismatch content lengh")
 	}
+	if val, ok := header["X-Object-Meta-Custom-Field"]; !ok || val != "SomeValue" {
+		t.Errorf("Fail: lost custom metadata header")
+	}
+
 	content, err := con.ObjectGetBytes(container, object)
 	if err != nil {
 		t.Errorf("Fail at read Large Object : %s", err.Error())
@@ -106,6 +113,7 @@ func checkObject(container, object string, t *testing.T) {
 	if !bytes.Equal(content, filecontent) {
 		t.Errorf("Fail: mismatch content")
 	}
+
 }
 func checkNotExistObject(container, object string, t *testing.T) {
 	_, _, err = con.Object(container, object)
@@ -136,14 +144,16 @@ func deleteDynamicObject(container, object string, t *testing.T) {
 	}
 }
 func createStaticObject(container, object string, t *testing.T) {
+	metadata := map[string]string{}
+	metadata["Custom-Field"] = "SomeValue"
 	ops := LargeObjectOpts{
-		Container:        container,                                     // Name of container to place object
-		ObjectName:       object,                                        // Name of object
-		CheckHash:        false,                                         // If set Check the hash
-		ContentType:      "application/octet-stream",                    // Content-Type of the object
-		Headers:          Metadata(map[string]string{}).ObjectHeaders(), // Additional headers to upload the object with
-		SegmentContainer: segmentContainer,                              // Name of the container to place segments
-		SegmentPrefix:    "sg",                                          // Prefix to use for the segments
+		Container:        container,                          // Name of container to place object
+		ObjectName:       object,                             // Name of object
+		CheckHash:        false,                              // If set Check the hash
+		ContentType:      "application/octet-stream",         // Content-Type of the object
+		Headers:          Metadata(metadata).ObjectHeaders(), // Additional headers to upload the object with
+		SegmentContainer: segmentContainer,                   // Name of the container to place segments
+		SegmentPrefix:    "sg",                               // Prefix to use for the segments
 	}
 	bigfile, err := con.StaticLargeObjectCreate(&ops)
 	if err != nil {
