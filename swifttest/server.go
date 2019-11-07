@@ -783,10 +783,16 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	defer func() {
 		switch err := recover().(type) {
 		case *swiftError:
+			if DEBUG {
+				fmt.Printf("\t%d - %s\n", err.statusCode, err.Message)
+			}
 			w.Header().Set("Content-Type", `text/plain; charset=utf-8`)
 			http.Error(w, err.Message, err.statusCode)
 		case nil:
 		default:
+			if DEBUG {
+				fmt.Printf("\t%panic %s\n", err)
+			}
 			panic(err)
 		}
 	}()
