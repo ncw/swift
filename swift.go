@@ -1485,6 +1485,22 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 	return
 }
 
+func (c *Connection) ObjectSymlinkCreate(container string, symlink string, targetAccount string, targetContainer string, targetObject string, targetEtag string) (headers Headers, err error) {
+
+	EMPTY_MD5 := "d41d8cd98f00b204e9800998ecf8427e"
+	symHeaders := Headers{}
+	contents := bytes.NewBufferString("")
+	if targetAccount != "" {
+		symHeaders["X-Symlink-Target-Account"] = targetAccount
+	}
+	if targetEtag != "" {
+		symHeaders["X-Symlink-Target-Etag"] = targetEtag
+	}
+	symHeaders["X-Symlink-Target"] = fmt.Sprintf("%s/%s", targetContainer, targetObject)
+	_, err = c.ObjectPut(container, symlink, contents, true, EMPTY_MD5, "application/symlink", symHeaders)
+	return
+}
+
 func (c *Connection) objectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers, parameters url.Values) (headers Headers, err error) {
 	extraHeaders := objectPutHeaders(objectName, &checkHash, Hash, contentType, h)
 	hash := md5.New()
