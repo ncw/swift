@@ -2105,10 +2105,10 @@ func (c *Connection) objectBase(container string, objectName string) (info Objec
 // X-Delete-At or X-Delete-After for expiring objects.
 //
 // You cannot use this to change any of the object's other headers
-// such as Content-Type, ETag, etc.
+// such as ETag, etc.
 //
 // Refer to copying an object when you need to update metadata or
-// other headers such as Content-Type or CORS headers.
+// other headers such as CORS headers.
 //
 // May return ObjectNotFound.
 func (c *Connection) ObjectUpdate(container string, objectName string, h Headers) error {
@@ -2175,11 +2175,12 @@ func (c *Connection) ObjectMove(srcContainer string, srcObjectName string, dstCo
 	return c.ObjectDelete(srcContainer, srcObjectName)
 }
 
-// ObjectUpdateContentType updates the content type of an object
+// ObjectUpdateContentType updates the content type of an object while
+// keeping current custom metadata.
 //
-// This is a convenience method which calls ObjectCopy
-//
-// All other metadata is preserved.
+// This is a convenience method which calls ObjectCopy, which causes data movement.
+// Content-Type can also be updated with ObjectUpdate which updates metadata
+// in place, without need of data movement in the cluster.
 func (c *Connection) ObjectUpdateContentType(container string, objectName string, contentType string) (err error) {
 	h := Headers{"Content-Type": contentType}
 	_, err = c.ObjectCopy(container, objectName, container, objectName, h)
