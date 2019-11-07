@@ -34,7 +34,7 @@ import (
 	"time"
 )
 
-const (
+var (
 	DEBUG        = false
 	TEST_ACCOUNT = "swifttest"
 )
