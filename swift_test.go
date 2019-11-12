@@ -923,6 +923,8 @@ func TestSymlinkObject(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := info["symlink"]; !ok {
+		// skip, symlink not supported
+		t.Skip("skip, symlink not supported")
 		return
 	}
 	c, rollback := makeConnectionWithContainer(t)
@@ -975,8 +977,12 @@ func TestStaticSymlinkObject(t *testing.T) {
 	}
 	if sym, ok := info["symlink"].(map[string]interface{}); ok {
 		if _, ok := sym["static_links"]; !ok {
+			t.Skip("skip, static symlink not supported")
 			return
 		}
+	} else {
+		t.Skip("skip, symlink not supported")
+		return
 	}
 
 	c, rollback := makeConnectionWithContainer(t)
