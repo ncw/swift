@@ -41,6 +41,7 @@ var (
 	srv              *swifttest.SwiftServer
 	m1               = swift.Metadata{"Hello": "1", "potato-Salad": "2"}
 	m2               = swift.Metadata{"hello": "", "potato-salad": ""}
+	m3               = swift.Metadata{"sweet-potato-salad": "1"}
 	skipVersionTests = false
 )
 
@@ -1302,6 +1303,29 @@ func TestObjectUpdate2(t *testing.T) {
 		t.Fatal(err)
 	}
 	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "", "potato-salad": ""})
+}
+
+func TestObjectUpdate3(t *testing.T) {
+	c, rollback := makeConnectionWithObjectHeaders(t)
+	defer rollback()
+
+	// sanity
+	_, headers, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "1", "potato-salad": "1"})
+
+	// update with new headers
+	err = c.ObjectUpdate(CONTAINER, OBJECT, m3.ObjectHeaders())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, headers, err = c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"sweet-potato-salad": "1"})
 }
 
 func TestContainers(t *testing.T) {
