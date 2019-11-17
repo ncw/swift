@@ -51,11 +51,14 @@ const (
 	CURRENT_CONTAINER  = "GoSwiftUnitTestCurrent"
 	OBJECT             = "test_object"
 	OBJECT2            = "test_object2"
+	SYMLINK_OBJECT     = "test_symlink"
+	SYMLINK_OBJECT2    = "test_symlink2"
 	EMPTYOBJECT        = "empty_test_object"
 	CONTENTS           = "12345"
 	CONTENTS2          = "54321"
 	CONTENT_SIZE       = int64(len(CONTENTS))
 	CONTENT_MD5        = "827ccb0eea8a706c4c34a16891f84e7b"
+	CONTENT2_MD5       = "01cfcd4f6b8770febfb40cb906715822"
 	EMPTY_MD5          = "d41d8cd98f00b204e9800998ecf8427e"
 	SECRET_KEY         = "b3968d0207b54ece87cccc06515a89d4"
 )
@@ -297,6 +300,12 @@ func makeConnectionWithSLO(t *testing.T) (*swift.Connection, func()) {
 func isV3Api() bool {
 	AuthUrl := os.Getenv("SWIFT_AUTH_URL")
 	return strings.Contains(AuthUrl, "v3")
+}
+
+func getSwinftInfo(t *testing.T) (info swift.SwiftInfo, err error) {
+	c, rollback := makeConnectionAuth(t)
+	defer rollback()
+	return c.QueryInfo()
 }
 
 func TestTransport(t *testing.T) {
@@ -905,6 +914,122 @@ func TestObjectEmpty(t *testing.T) {
 	}
 	if info.Hash != EMPTY_MD5 {
 		t.Errorf("Bad MD5 want %v got %v", EMPTY_MD5, info.Hash)
+	}
+}
+
+func TestSymlinkObject(t *testing.T) {
+	info, err := getSwinftInfo(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := info["symlink"]; !ok {
+		// skip, symlink not supported
+		t.Skip("skip, symlink not supported")
+		return
+	}
+	c, rollback := makeConnectionWithContainer(t)
+	defer rollback()
+
+	// write target objects
+	err = c.ObjectPutBytes(CONTAINER, OBJECT, []byte(CONTENTS), "text/potato")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = c.ObjectDelete(CONTAINER, OBJECT)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// test dynamic link
+	_, err = c.ObjectSymlinkCreate(CONTAINER, SYMLINK_OBJECT, "", CONTAINER, OBJECT, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = c.ObjectDelete(CONTAINER, SYMLINK_OBJECT)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	md, _, err := c.Object(CONTAINER, SYMLINK_OBJECT)
+	if err != nil {
+		t.Error(err)
+	}
+	if md.ContentType != "text/potato" {
+		t.Error("Bad content type", md.ContentType)
+	}
+	if md.Bytes != CONTENT_SIZE {
+		t.Errorf("Bad length want 5 got %v", md.Bytes)
+	}
+	if md.Hash != CONTENT_MD5 {
+		t.Errorf("Bad MD5 want %v got %v", CONTENT_MD5, md.Hash)
+	}
+
+}
+
+func TestStaticSymlinkObject(t *testing.T) {
+	info, err := getSwinftInfo(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sym, ok := info["symlink"].(map[string]interface{}); ok {
+		if _, ok := sym["static_links"]; !ok {
+			t.Skip("skip, static symlink not supported")
+			return
+		}
+	} else {
+		t.Skip("skip, symlink not supported")
+		return
+	}
+
+	c, rollback := makeConnectionWithContainer(t)
+	defer rollback()
+
+	// write target objects
+	err = c.ObjectPutBytes(CONTAINER, OBJECT2, []byte(CONTENTS2), "text/tomato")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = c.ObjectDelete(CONTAINER, OBJECT2)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// test static link
+	// first with the wrong target etag
+	_, err = c.ObjectSymlinkCreate(CONTAINER, SYMLINK_OBJECT2, "", CONTAINER, OBJECT2, CONTENT_MD5)
+	if err == nil {
+		t.Error("Symlink with wrong target etag should have failed")
+	}
+
+	_, err = c.ObjectSymlinkCreate(CONTAINER, SYMLINK_OBJECT2, "", CONTAINER, OBJECT2, CONTENT2_MD5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = c.ObjectDelete(CONTAINER, SYMLINK_OBJECT2)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	md, _, err := c.Object(CONTAINER, SYMLINK_OBJECT2)
+	if err != nil {
+		t.Error(err)
+	}
+	if md.ContentType != "text/tomato" {
+		t.Error("Bad content type", md.ContentType)
+	}
+	if md.Bytes != CONTENT_SIZE {
+		t.Errorf("Bad length want 5 got %v", md.Bytes)
+	}
+	if md.Hash != CONTENT2_MD5 {
+		t.Errorf("Bad MD5 want %v got %v", CONTENT2_MD5, md.Hash)
 	}
 }
 
