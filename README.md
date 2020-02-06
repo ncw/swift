@@ -157,3 +157,4 @@ Contributors
 - Jérémy Clerc <jeremy.clerc@tagpay.fr>
 - 4xicom <37339705+4xicom@users.noreply.github.com>
 - Bo <bo@4xi.com>
+- Thiago da Silva <thiagodasilva@users.noreply.github.com>
