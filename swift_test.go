@@ -1171,6 +1171,36 @@ func TestObjectCreate(t *testing.T) {
 	}
 }
 
+func TestObjectCreateAbort(t *testing.T) {
+	c, rollback := makeConnectionWithContainer(t)
+	defer rollback()
+
+	out, err := c.ObjectCreate(CONTAINER, OBJECT2, true, "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = c.ObjectDelete(CONTAINER, OBJECT2) // Ignore error
+	}()
+
+	expectedContents := "foo"
+	_, err = out.Write([]byte(expectedContents))
+	if err != nil {
+		t.Error(err)
+	}
+
+	errAbort := fmt.Errorf("abort")
+	err = out.CloseWithError(errAbort)
+	if err != nil {
+		t.Errorf("Unexpected error %#v", err)
+	}
+
+	_, err = c.ObjectGetString(CONTAINER, OBJECT2)
+	if err != swift.ObjectNotFound {
+		t.Errorf("Unexpected error: %#v", err)
+	}
+}
+
 func TestObjectGetString(t *testing.T) {
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
