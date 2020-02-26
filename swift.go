@@ -1372,6 +1372,13 @@ func (file *ObjectCreateFile) Write(p []byte) (n int, err error) {
 	return
 }
 
+// CloseWithError closes the object, aborting the upload.
+func (file *ObjectCreateFile) CloseWithError(err error) error {
+	_ = file.pipeWriter.CloseWithError(err)
+	<-file.done
+	return nil
+}
+
 // Close the object and checks the md5sum if it was required.
 //
 // Also returns any other errors from the server (eg container not
