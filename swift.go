@@ -964,7 +964,7 @@ func (c *Connection) ContainersAll(opts *ContainersOpts) ([]Container, error) {
 	return containers, nil
 }
 
-// ContainerNamesAll is like ContainerNamess but it returns all the Containers
+// ContainerNamesAll is like ContainerNames but it returns all the Containers
 //
 // It calls ContainerNames multiple times using the Marker parameter
 //
