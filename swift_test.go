@@ -1948,7 +1948,7 @@ func TestObjectDelete(t *testing.T) {
 func TestBulkDelete(t *testing.T) {
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	result, err := c.BulkDelete(CONTAINER, []string{OBJECT})
+	result, err := c.BulkDelete(CONTAINER, []string{OBJECT}, nil)
 	if err == swift.Forbidden {
 		t.Log("Server doesn't support BulkDelete - skipping test")
 		return
@@ -1966,7 +1966,7 @@ func TestBulkDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err = c.BulkDelete(CONTAINER, []string{OBJECT2, OBJECT})
+	result, err = c.BulkDelete(CONTAINER, []string{OBJECT2, OBJECT}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
