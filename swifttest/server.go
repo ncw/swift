@@ -7,7 +7,10 @@
 package swifttest
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/bzip2"
+	"compress/gzip"
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
@@ -78,6 +81,12 @@ type Key struct {
 
 type Subdir struct {
 	Subdir string `json:"subdir"`
+}
+
+type AutoExtractResponse struct {
+	CreatedFiles int64      `json:"Number Files Created"`
+	Status       string     `json:"Response Status"`
+	Errors       [][]string `json:"Errors"`
 }
 
 type swiftError struct {
@@ -348,10 +357,6 @@ func (r containerResource) delete(a *action) interface{} {
 }
 
 func (r containerResource) put(a *action) interface{} {
-	if a.req.URL.Query().Get("extract-archive") != "" {
-		fatalf(403, "Operation forbidden", "Bulk upload is not supported")
-	}
-
 	if r.container == nil {
 		if !validContainerName(r.name) {
 			fatalf(400, "InvalidContainerName", "The specified container is not valid")
@@ -369,6 +374,126 @@ func (r containerResource) put(a *action) interface{} {
 		a.user.Containers[r.name] = r.container
 		a.user.swiftaccount.Containers++
 		a.user.Unlock()
+	}
+
+	if format := a.req.URL.Query().Get("extract-archive"); format != "" {
+		_, _, objectName, _ := a.srv.parseURL(a.req.URL)
+
+		data, err := ioutil.ReadAll(a.req.Body)
+		if err != nil {
+			fatalf(400, "TODO", "read error")
+		}
+		if a.req.ContentLength >= 0 && int64(len(data)) != a.req.ContentLength {
+			fatalf(400, "IncompleteBody", "You did not provide the number of bytes specified by the Content-Length HTTP header")
+		}
+
+		dataReader := bytes.NewReader(data)
+		var reader *tar.Reader
+		switch format {
+		case "tar":
+			reader = tar.NewReader(dataReader)
+		case "tar.gz":
+			gzr, err := gzip.NewReader(dataReader)
+			if err != nil {
+				fatalf(400, "TODO", "Invalid tar.gz")
+			}
+			defer gzr.Close()
+			reader = tar.NewReader(gzr)
+		case "tar.bz2":
+			bzr := bzip2.NewReader(dataReader)
+			reader = tar.NewReader(bzr)
+		default:
+			fatalf(400, "TODO", "Invalid format %s", format)
+		}
+
+		resp := AutoExtractResponse{}
+		for {
+			header, err := reader.Next()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				//return location, err
+			}
+			if header == nil {
+				continue
+			}
+
+			if header.Typeflag == tar.TypeDir {
+				continue
+			}
+
+			var fullPath string
+			if objectName != "" {
+				fullPath = objectName + "/" + header.Name
+			} else {
+				fullPath = header.Name
+			}
+
+			obj := r.container.objects[fullPath]
+			if obj == nil {
+				// new object
+				obj = &object{
+					name: fullPath,
+					metadata: metadata{
+						meta: make(http.Header),
+					},
+				}
+				atomic.AddInt64(&a.user.Objects, 1)
+			} else {
+				atomic.AddInt64(&r.container.bytes, -header.Size)
+				atomic.AddInt64(&a.user.BytesUsed, -header.Size)
+			}
+
+			// Default content_type
+			obj.content_type = "application/octet-stream"
+
+			// handle extended attributes
+			for k, v := range header.PAXRecords {
+				ks := strings.SplitN(k, "SCHILY.xattr.user.", 2)
+				if len(ks) < 2 {
+					continue
+				}
+
+				if ks[1] == "mime_type" {
+					obj.content_type = v
+				}
+
+				if strings.HasPrefix(ks[1], "meta.") {
+					meta := strings.TrimLeft(ks[1], "meta.")
+					obj.meta["X-Object-Meta-"+strings.Title(meta)] = []string{v}
+				}
+			}
+
+			sum := md5.New()
+			objData, err := ioutil.ReadAll(io.TeeReader(reader, sum))
+			if err != nil {
+				errArr := []string{fullPath, fmt.Sprintf("read error: %v", err)}
+				resp.Errors = append(resp.Errors, errArr)
+				continue
+			}
+			gotHash := sum.Sum(nil)
+
+			obj.data = objData
+			obj.checksum = gotHash
+			obj.mtime = time.Now().UTC()
+			r.container.Lock()
+			r.container.objects[fullPath] = obj
+			r.container.bytes += header.Size
+			r.container.Unlock()
+
+			atomic.AddInt64(&a.user.BytesUsed, header.Size)
+			atomic.AddInt64(&resp.CreatedFiles, 1)
+		}
+
+		resp.Status = "201 Accepted"
+		status := 201
+		if len(resp.Errors) > 0 {
+			resp.Status = "400 Error"
+			status = 400
+		}
+		a.w.Header().Set("Content-Type", "application/json")
+		a.w.WriteHeader(status)
+		jsonMarshal(a.w, resp)
 	}
 
 	return nil
@@ -791,7 +916,7 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 		case nil:
 		default:
 			if DEBUG {
-				fmt.Printf("\t%panic %s\n", err)
+				fmt.Printf("\tpanic %s\n", err)
 			}
 			panic(err)
 		}
