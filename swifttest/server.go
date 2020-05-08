@@ -27,6 +27,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -448,7 +449,8 @@ func (r containerResource) put(a *action) interface{} {
 			obj.content_type = "application/octet-stream"
 
 			// handle extended attributes
-			for k, v := range header.PAXRecords {
+			records := getPAXRecords(header)
+			for k, v := range records {
 				ks := strings.SplitN(k, "SCHILY.xattr.user.", 2)
 				if len(ks) < 2 {
 					continue
@@ -518,6 +520,23 @@ func (r containerResource) post(a *action) interface{} {
 }
 
 func (containerResource) copy(a *action) interface{} { return notAllowed() }
+
+func getPAXRecords(h *tar.Header) map[string]string {
+	rHeader := reflect.ValueOf(h)
+
+	// Try PAXRecords - go 1.10
+	paxField := rHeader.Elem().FieldByName("PAXRecords")
+	if paxField.IsValid() {
+		return paxField.Interface().(map[string]string)
+	}
+
+	// Try Xattrs - go 1.3
+	xAttrsField := rHeader.Elem().FieldByName("Xattrs")
+	if xAttrsField.IsValid() {
+		return xAttrsField.Interface().(map[string]string)
+	}
+	return map[string]string{}
+}
 
 // validContainerName returns whether name is a valid bucket name.
 // Here are the rules, from:
