@@ -1967,7 +1967,19 @@ func (c *Connection) doBulkDelete(objects []string, h Headers) (result BulkDelet
 // See also:
 // * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-bulk-delete.html
 // * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Bulk_Delete-d1e2338.html
-func (c *Connection) BulkDelete(container string, objectNames []string, h Headers) (result BulkDeleteResult, err error) {
+func (c *Connection) BulkDelete(container string, objectNames []string) (result BulkDeleteResult, err error) {
+	return c.BulkDeleteHeaders(container, objectNames, nil)
+}
+
+// BulkDeleteHeaders deletes multiple objectNames from container in one operation.
+//
+// Some servers may not accept bulk-delete requests since bulk-delete is
+// an optional feature of swift - these will return the Forbidden error.
+//
+// See also:
+// * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-bulk-delete.html
+// * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Bulk_Delete-d1e2338.html
+func (c *Connection) BulkDeleteHeaders(container string, objectNames []string, h Headers) (result BulkDeleteResult, err error) {
 	if len(objectNames) == 0 {
 		result.Errors = make(map[string]error)
 		return
