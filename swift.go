@@ -1909,22 +1909,26 @@ type BulkDeleteResult struct {
 	Headers        Headers          // Response HTTP headers.
 }
 
-func (c *Connection) doBulkDelete(objects []string) (result BulkDeleteResult, err error) {
+func (c *Connection) doBulkDelete(objects []string, h Headers) (result BulkDeleteResult, err error) {
 	var buffer bytes.Buffer
 	for _, s := range objects {
 		u := url.URL{Path: s}
 		buffer.WriteString(u.String() + "\n")
 	}
+	extraHeaders := Headers{
+		"Accept":         "application/json",
+		"Content-Type":   "text/plain",
+		"Content-Length": strconv.Itoa(buffer.Len()),
+	}
+	for key, value := range h {
+		extraHeaders[key] = value
+	}
 	resp, headers, err := c.storage(RequestOpts{
 		Operation:  "DELETE",
 		Parameters: url.Values{"bulk-delete": []string{"1"}},
-		Headers: Headers{
-			"Accept":         "application/json",
-			"Content-Type":   "text/plain",
-			"Content-Length": strconv.Itoa(buffer.Len()),
-		},
-		ErrorMap: ContainerErrorMap,
-		Body:     &buffer,
+		Headers:    extraHeaders,
+		ErrorMap:   ContainerErrorMap,
+		Body:       &buffer,
 	})
 	if err != nil {
 		return
@@ -1964,6 +1968,18 @@ func (c *Connection) doBulkDelete(objects []string) (result BulkDeleteResult, er
 // * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-bulk-delete.html
 // * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Bulk_Delete-d1e2338.html
 func (c *Connection) BulkDelete(container string, objectNames []string) (result BulkDeleteResult, err error) {
+	return c.BulkDeleteHeaders(container, objectNames, nil)
+}
+
+// BulkDeleteHeaders deletes multiple objectNames from container in one operation.
+//
+// Some servers may not accept bulk-delete requests since bulk-delete is
+// an optional feature of swift - these will return the Forbidden error.
+//
+// See also:
+// * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-bulk-delete.html
+// * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Bulk_Delete-d1e2338.html
+func (c *Connection) BulkDeleteHeaders(container string, objectNames []string, h Headers) (result BulkDeleteResult, err error) {
 	if len(objectNames) == 0 {
 		result.Errors = make(map[string]error)
 		return
@@ -1972,7 +1988,7 @@ func (c *Connection) BulkDelete(container string, objectNames []string) (result 
 	for i, name := range objectNames {
 		fullPaths[i] = fmt.Sprintf("/%s/%s", container, name)
 	}
-	return c.doBulkDelete(fullPaths)
+	return c.doBulkDelete(fullPaths, h)
 }
 
 // BulkUploadResult stores results of BulkUpload().
