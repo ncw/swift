@@ -1016,7 +1016,6 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 		if !ok {
 			s.RUnlock()
 			panic(notAuthorized())
-			return
 		}
 
 		a.user = s.Accounts[session.username]
