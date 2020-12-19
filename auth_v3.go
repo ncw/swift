@@ -2,6 +2,7 @@ package swift
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -122,7 +123,7 @@ type v3Auth struct {
 	Headers http.Header
 }
 
-func (auth *v3Auth) Request(c *Connection) (*http.Request, error) {
+func (auth *v3Auth) Request(ctx context.Context, c *Connection) (*http.Request, error) {
 	auth.Region = c.Region
 
 	var v3i interface{}
@@ -242,7 +243,7 @@ func (auth *v3Auth) Request(c *Connection) (*http.Request, error) {
 		url += "/"
 	}
 	url += "auth/tokens"
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package swift
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
@@ -79,14 +80,14 @@ func (headers Headers) IsLargeObject() bool {
 	return headers.IsLargeObjectSLO() || headers.IsLargeObjectDLO()
 }
 
-func (c *Connection) getAllSegments(container string, path string, headers Headers) (string, []Object, error) {
+func (c *Connection) getAllSegments(ctx context.Context, container string, path string, headers Headers) (string, []Object, error) {
 	if manifest, isDLO := headers["X-Object-Manifest"]; isDLO {
 		segmentContainer, segmentPath := parseFullPath(manifest)
-		segments, err := c.getAllDLOSegments(segmentContainer, segmentPath)
+		segments, err := c.getAllDLOSegments(ctx, segmentContainer, segmentPath)
 		return segmentContainer, segments, err
 	}
 	if headers.IsLargeObjectSLO() {
-		return c.getAllSLOSegments(container, path)
+		return c.getAllSLOSegments(ctx, container, path)
 	}
 	return "", nil, NotLargeObject
 }
@@ -120,7 +121,7 @@ type LargeObjectFile interface {
 // opts.Flags can have the following bits set
 //   os.TRUNC  - remove the contents of the large object if it exists
 //   os.APPEND - write at the end of the large object
-func (c *Connection) largeObjectCreate(opts *LargeObjectOpts) (*largeObjectCreateFile, error) {
+func (c *Connection) largeObjectCreate(ctx context.Context, opts *LargeObjectOpts) (*largeObjectCreateFile, error) {
 	var (
 		segmentPath      string
 		segmentContainer string
@@ -135,13 +136,13 @@ func (c *Connection) largeObjectCreate(opts *LargeObjectOpts) (*largeObjectCreat
 		return nil, err
 	}
 
-	if info, headers, err := c.Object(opts.Container, opts.ObjectName); err == nil {
+	if info, headers, err := c.ObjectWithContext(ctx, opts.Container, opts.ObjectName); err == nil {
 		if opts.Flags&os.O_TRUNC != 0 {
-			c.LargeObjectDelete(opts.Container, opts.ObjectName)
+			c.LargeObjectDeleteWithContext(ctx, opts.Container, opts.ObjectName)
 		} else {
 			currentLength = info.Bytes
 			if headers.IsLargeObject() {
-				segmentContainer, segments, err = c.getAllSegments(opts.Container, opts.ObjectName, headers)
+				segmentContainer, segments, err = c.getAllSegments(ctx, opts.Container, opts.ObjectName, headers)
 				if err != nil {
 					return nil, err
 				}
@@ -149,7 +150,7 @@ func (c *Connection) largeObjectCreate(opts *LargeObjectOpts) (*largeObjectCreat
 					segmentPath = gopath.Dir(segments[0].Name)
 				}
 			} else {
-				if err = c.ObjectMove(opts.Container, opts.ObjectName, opts.Container, getSegment(segmentPath, 1)); err != nil {
+				if err = c.ObjectMoveWithContext(ctx, opts.Container, opts.ObjectName, opts.Container, getSegment(segmentPath, 1)); err != nil {
 					return nil, err
 				}
 				segments = append(segments, info)
@@ -199,14 +200,19 @@ func (c *Connection) largeObjectCreate(opts *LargeObjectOpts) (*largeObjectCreat
 
 // LargeObjectDelete deletes the large object named by container, path
 func (c *Connection) LargeObjectDelete(container string, objectName string) error {
-	_, headers, err := c.Object(container, objectName)
+	return c.LargeObjectDeleteWithContext(context.Background(), container, objectName)
+}
+
+// LargeObjectDeleteWithContext is like LargeObjectDelete but it accepts also context.Context as a parameter.
+func (c *Connection) LargeObjectDeleteWithContext(ctx context.Context, container string, objectName string) error {
+	_, headers, err := c.ObjectWithContext(ctx, container, objectName)
 	if err != nil {
 		return err
 	}
 
 	var objects [][]string
 	if headers.IsLargeObject() {
-		segmentContainer, segments, err := c.getAllSegments(container, objectName, headers)
+		segmentContainer, segments, err := c.getAllSegments(ctx, container, objectName, headers)
 		if err != nil {
 			return err
 		}
@@ -216,13 +222,13 @@ func (c *Connection) LargeObjectDelete(container string, objectName string) erro
 	}
 	objects = append(objects, []string{container, objectName})
 
-	info, err := c.cachedQueryInfo()
+	info, err := c.cachedQueryInfo(ctx)
 	if err == nil && info.SupportsBulkDelete() && len(objects) > 0 {
 		filenames := make([]string, len(objects))
 		for i, obj := range objects {
 			filenames[i] = obj[0] + "/" + obj[1]
 		}
-		_, err = c.doBulkDelete(filenames, nil)
+		_, err = c.doBulkDelete(ctx, filenames, nil)
 		// Don't fail on ObjectNotFound because eventual consistency
 		// makes this situation normal.
 		if err != nil && err != Forbidden && err != ObjectNotFound {
@@ -230,7 +236,7 @@ func (c *Connection) LargeObjectDelete(container string, objectName string) erro
 		}
 	} else {
 		for _, obj := range objects {
-			if err := c.ObjectDelete(obj[0], obj[1]); err != nil {
+			if err := c.ObjectDeleteWithContext(ctx, obj[0], obj[1]); err != nil {
 				return err
 			}
 		}
@@ -245,12 +251,17 @@ func (c *Connection) LargeObjectDelete(container string, objectName string) erro
 // If the object is a Static Large Object (SLO), it retrieves the JSON content
 // of the manifest and return all the segments of it.
 func (c *Connection) LargeObjectGetSegments(container string, path string) (string, []Object, error) {
-	_, headers, err := c.Object(container, path)
+	return c.LargeObjectGetSegmentsWithContext(context.Background(), container, path)
+}
+
+// LargeObjectGetSegmentsWithContext is like LargeObjectGetSegments but it accepts also context.Context as a parameter.
+func (c *Connection) LargeObjectGetSegmentsWithContext(ctx context.Context, container string, path string) (string, []Object, error) {
+	_, headers, err := c.ObjectWithContext(ctx, container, path)
 	if err != nil {
 		return "", nil, err
 	}
 
-	return c.getAllSegments(container, path, headers)
+	return c.getAllSegments(ctx, container, path, headers)
 }
 
 // Seek sets the offset for the next write operation
@@ -301,11 +312,11 @@ func withLORetry(expectedSize int64, fn func() (Headers, int64, error)) (err err
 	}
 }
 
-func (c *Connection) waitForSegmentsToShowUp(container, objectName string, expectedSize int64) (err error) {
+func (c *Connection) waitForSegmentsToShowUp(ctx context.Context, container, objectName string, expectedSize int64) (err error) {
 	err = withLORetry(expectedSize, func() (Headers, int64, error) {
 		var info Object
 		var headers Headers
-		info, headers, err = c.objectBase(container, objectName)
+		info, headers, err = c.objectBase(ctx, container, objectName)
 		if err != nil {
 			return headers, 0, err
 		}
@@ -436,6 +447,11 @@ func (blo *bufferedLargeObjectFile) Seek(offset int64, whence int) (int64, error
 }
 
 func (blo *bufferedLargeObjectFile) Size() int64 {
+	return blo.SizeWithContext(context.Background())
+}
+
+// SizeWithContext is like Size but it accepts also context.Context as a parameter.
+func (blo *bufferedLargeObjectFile) SizeWithContext(ctx context.Context) int64 {
 	return blo.LargeObjectFile.Size() + int64(blo.bw.Buffered())
 }
 
