@@ -2,7 +2,8 @@ package swift
 
 import (
 	"bytes"
-	"github.com/ncw/swift/swifttest"
+	"context"
+	"github.com/ncw/swift/v2/swifttest"
 	"net/http"
 	"testing"
 	"time"
@@ -47,7 +48,7 @@ func initTestConnection(t *testing.T) (*Connection, error) {
 		Domain:         "Default",
 		AuthVersion:    1,
 	}
-	err = swiftCon.Authenticate()
+	err = swiftCon.Authenticate(context.Background())
 	return &swiftCon, err
 }
 func TestCases(t *testing.T) {
@@ -63,8 +64,9 @@ func TestCases(t *testing.T) {
 }
 
 func createContainers(containers []string, t *testing.T) {
+	ctx := context.Background()
 	for i := 0; i < len(containers); i++ {
-		err = con.ContainerCreate(containers[i], nil) // Create container
+		err = con.ContainerCreate(ctx, containers[i], nil) // Create container
 		if err != nil {
 			t.Errorf("Fail at create container %s", containers[i])
 		}
@@ -72,6 +74,7 @@ func createContainers(containers []string, t *testing.T) {
 }
 
 func createDynamicObject(container, object string, t *testing.T) {
+	ctx := context.Background()
 	metadata := map[string]string{}
 	metadata["Custom-Field"] = "SomeValue"
 	ops := LargeObjectOpts{
@@ -83,16 +86,17 @@ func createDynamicObject(container, object string, t *testing.T) {
 		SegmentContainer: segmentContainer,                   // Name of the container to place segments
 		SegmentPrefix:    "sg",                               // Prefix to use for the segments
 	}
-	bigfile, err := con.DynamicLargeObjectCreate(&ops)
+	bigfile, err := con.DynamicLargeObjectCreate(ctx, &ops)
 	if err != nil {
 		t.Errorf("Fail at dynamic create Large Object")
 	}
-	bigfile.Write(filecontent)
-	bigfile.Close()
+	bigfile.WriteWithContext(ctx, filecontent)
+	bigfile.CloseWithContext(ctx)
 	checkObject(container, object, t)
 }
 func checkObject(container, object string, t *testing.T) {
-	info, header, err := con.Object(container, object)
+	ctx := context.Background()
+	info, header, err := con.Object(ctx, container, object)
 	if err != nil {
 		t.Errorf("Fail at get Large Object metadata: %s", err.Error())
 	}
@@ -106,7 +110,7 @@ func checkObject(container, object string, t *testing.T) {
 		t.Errorf("Fail: lost custom metadata header")
 	}
 
-	content, err := con.ObjectGetBytes(container, object)
+	content, err := con.ObjectGetBytes(ctx, container, object)
 	if err != nil {
 		t.Errorf("Fail at read Large Object : %s", err.Error())
 	}
@@ -116,13 +120,13 @@ func checkObject(container, object string, t *testing.T) {
 
 }
 func checkNotExistObject(container, object string, t *testing.T) {
-	_, _, err = con.Object(container, object)
+	_, _, err = con.Object(context.Background(), container, object)
 	if err == nil || err.Error() != "Object Not Found" {
 		t.Errorf("Fail at checkNotExistObject object: %s", err)
 	}
 }
 func moveDynamicObject(sc, so, dc, do string, t *testing.T) {
-	err = con.DynamicLargeObjectMove(sc, so, dc, do)
+	err = con.DynamicLargeObjectMove(context.Background(), sc, so, dc, do)
 	if err != nil {
 		t.Errorf("Fail at dynamic move Large Object: %s", err.Error())
 	}
@@ -130,12 +134,13 @@ func moveDynamicObject(sc, so, dc, do string, t *testing.T) {
 	checkObject(dc, do, t)
 }
 func deleteDynamicObject(container, object string, t *testing.T) {
-	err = con.DynamicLargeObjectDelete(container, object)
+	ctx := context.Background()
+	err = con.DynamicLargeObjectDelete(ctx, container, object)
 	if err != nil {
 		t.Errorf("Fail at delte dynamic Large Object: %s", err.Error())
 	}
 	checkNotExistObject(container, object, t)
-	objs, err := con.ObjectsAll(segmentContainer, nil)
+	objs, err := con.ObjectsAll(ctx, segmentContainer, nil)
 	if err != nil {
 		t.Errorf("Fail at check delte dynamic Large Object: %s", err.Error())
 	}
@@ -144,6 +149,7 @@ func deleteDynamicObject(container, object string, t *testing.T) {
 	}
 }
 func createStaticObject(container, object string, t *testing.T) {
+	ctx := context.Background()
 	metadata := map[string]string{}
 	metadata["Custom-Field"] = "SomeValue"
 	ops := LargeObjectOpts{
@@ -155,16 +161,16 @@ func createStaticObject(container, object string, t *testing.T) {
 		SegmentContainer: segmentContainer,                   // Name of the container to place segments
 		SegmentPrefix:    "sg",                               // Prefix to use for the segments
 	}
-	bigfile, err := con.StaticLargeObjectCreate(&ops)
+	bigfile, err := con.StaticLargeObjectCreate(ctx, &ops)
 	if err != nil {
 		t.Errorf("Fail at static create Large Object")
 	}
-	bigfile.Write(filecontent)
-	bigfile.Close()
+	bigfile.WriteWithContext(ctx, filecontent)
+	bigfile.CloseWithContext(ctx)
 	checkObject(container, object, t)
 }
 func moveStaticObject(sc, so, dc, do string, t *testing.T) {
-	err = con.StaticLargeObjectMove(sc, so, dc, do)
+	err = con.StaticLargeObjectMove(context.Background(), sc, so, dc, do)
 	if err != nil {
 		t.Errorf("Fail at static move Large Object: %s", err.Error())
 	}
@@ -172,12 +178,13 @@ func moveStaticObject(sc, so, dc, do string, t *testing.T) {
 	checkObject(dc, do, t)
 }
 func deleteStaticObject(container, object string, t *testing.T) {
-	err = con.StaticLargeObjectDelete(container, object)
+	ctx := context.Background()
+	err = con.StaticLargeObjectDelete(ctx, container, object)
 	if err != nil {
 		t.Errorf("Fail at delte dynamic Large Object: %s", err.Error())
 	}
 	checkNotExistObject(container, object, t)
-	objs, err := con.ObjectsAll(segmentContainer, nil)
+	objs, err := con.ObjectsAll(ctx, segmentContainer, nil)
 	if err != nil {
 		t.Errorf("Fail at check delte dynamic Large Object: %s", err.Error())
 	}

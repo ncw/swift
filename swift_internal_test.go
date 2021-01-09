@@ -6,6 +6,7 @@
 package swift
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -316,7 +317,8 @@ func TestInternalAuthenticate(t *testing.T) {
 	}).Url("/v1.0")
 	defer server.Finished()
 
-	err := c.Authenticate()
+	ctx := context.Background()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +338,7 @@ func TestInternalAuthenticateDenied(t *testing.T) {
 	server.AddCheck(t).Error(401, "DENIED")
 	defer server.Finished()
 	c.UnAuthenticate()
-	err := c.Authenticate()
+	err := c.Authenticate(context.Background())
 	if err != AuthorizationFailed {
 		t.Fatal("Expecting AuthorizationFailed", err)
 	}
@@ -351,7 +353,8 @@ func TestInternalAuthenticateBad(t *testing.T) {
 		"X-Storage-Url": PROXY_URL,
 	})
 	defer server.Finished()
-	err := c.Authenticate()
+	ctx := context.Background()
+	err := c.Authenticate(ctx)
 	checkError(t, err, 0, "Response didn't have storage url and auth token")
 	if c.Authenticated() {
 		t.Fatal("Expecting not authenticated")
@@ -360,14 +363,14 @@ func TestInternalAuthenticateBad(t *testing.T) {
 	server.AddCheck(t).Out(Headers{
 		"X-Auth-Token": AUTH_TOKEN,
 	})
-	err = c.Authenticate()
+	err = c.Authenticate(ctx)
 	checkError(t, err, 0, "Response didn't have storage url and auth token")
 	if c.Authenticated() {
 		t.Fatal("Expecting not authenticated")
 	}
 
 	server.AddCheck(t)
-	err = c.Authenticate()
+	err = c.Authenticate(ctx)
 	checkError(t, err, 0, "Response didn't have storage url and auth token")
 	if c.Authenticated() {
 		t.Fatal("Expecting not authenticated")
@@ -377,7 +380,7 @@ func TestInternalAuthenticateBad(t *testing.T) {
 		"X-Storage-Url": PROXY_URL,
 		"X-Auth-Token":  AUTH_TOKEN,
 	})
-	err = c.Authenticate()
+	err = c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +394,7 @@ func testContainerNames(t *testing.T, rx string, expected []string) {
 		"User-Agent":   DefaultUserAgent,
 		"X-Auth-Token": AUTH_TOKEN,
 	}).Tx(rx).Url("/proxy")
-	containers, err := c.ContainerNames(nil)
+	containers, err := c.ContainerNames(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +423,7 @@ func TestInternalObjectPutBytes(t *testing.T) {
 		"Content-Type":   "text/plain",
 	}).Rx("12345")
 	defer server.Finished()
-	c.ObjectPutBytes("container", "object", []byte{'1', '2', '3', '4', '5'}, "text/plain")
+	c.ObjectPutBytes(context.Background(), "container", "object", []byte{'1', '2', '3', '4', '5'}, "text/plain")
 }
 
 func TestInternalObjectPutString(t *testing.T) {
@@ -431,7 +434,7 @@ func TestInternalObjectPutString(t *testing.T) {
 		"Content-Type":   "text/plain",
 	}).Rx("12345")
 	defer server.Finished()
-	c.ObjectPutString("container", "object", "12345", "text/plain")
+	c.ObjectPutString(context.Background(), "container", "object", "12345", "text/plain")
 }
 
 func TestSetFromEnv(t *testing.T) {

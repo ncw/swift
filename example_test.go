@@ -4,12 +4,14 @@
 package swift_test
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/ncw/swift"
+	"github.com/ncw/swift/v2"
 )
 
 func ExampleConnection() {
+	ctx := context.Background()
 	// Create a v1 auth connection
 	c := &swift.Connection{
 		// This should be your username
@@ -24,12 +26,12 @@ func ExampleConnection() {
 	}
 
 	// Authenticate
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		panic(err)
 	}
 	// List all the containers
-	containers, err := c.ContainerNames(nil)
+	containers, err := c.ContainerNames(ctx, nil)
 	fmt.Println(containers)
 	// etc...
 
@@ -61,8 +63,8 @@ func ExampleConnection_ObjectsWalk() {
 	defer rollback()
 
 	objects := make([]string, 0)
-	err := c.ObjectsWalk(container, nil, func(opts *swift.ObjectsOpts) (interface{}, error) {
-		newObjects, err := c.ObjectNames(container, opts)
+	err := c.ObjectsWalk(context.Background(), container, nil, func(ctx context.Context, opts *swift.ObjectsOpts) (interface{}, error) {
+		newObjects, err := c.ObjectNames(ctx, container, opts)
 		if err == nil {
 			objects = append(objects, newObjects...)
 		}
@@ -76,23 +78,24 @@ func ExampleConnection_VersionContainerCreate() {
 	defer rollback()
 
 	// Use the helper method to create the current and versions container.
-	if err := c.VersionContainerCreate("cds", "cd-versions"); err != nil {
+	if err := c.VersionContainerCreate(context.Background(), "cds", "cd-versions"); err != nil {
 		fmt.Print(err.Error())
 	}
 }
 
 func ExampleConnection_VersionEnable() {
+	ctx := context.Background()
 	c, rollback := makeConnection(nil)
 	defer rollback()
 
 	// Build the containers manually and enable them.
-	if err := c.ContainerCreate("movie-versions", nil); err != nil {
+	if err := c.ContainerCreate(ctx, "movie-versions", nil); err != nil {
 		fmt.Print(err.Error())
 	}
-	if err := c.ContainerCreate("movies", nil); err != nil {
+	if err := c.ContainerCreate(ctx, "movies", nil); err != nil {
 		fmt.Print(err.Error())
 	}
-	if err := c.VersionEnable("movies", "movie-versions"); err != nil {
+	if err := c.VersionEnable(ctx, "movies", "movie-versions"); err != nil {
 		fmt.Print(err.Error())
 	}
 
@@ -105,5 +108,5 @@ func ExampleConnection_VersionDisable() {
 	defer rollback()
 
 	// Disable versioning on a container.  Note that this does not delete the versioning container.
-	c.VersionDisable("movies")
+	c.VersionDisable(context.Background(), "movies")
 }

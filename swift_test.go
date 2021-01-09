@@ -15,6 +15,7 @@ package swift_test
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
@@ -33,8 +34,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ncw/swift"
-	"github.com/ncw/swift/swifttest"
+	"github.com/ncw/swift/v2"
+	"github.com/ncw/swift/v2/swifttest"
 )
 
 var (
@@ -144,8 +145,9 @@ func makeConnection(t *testing.T) (*swift.Connection, func()) {
 }
 
 func makeConnectionAuth(t *testing.T) (*swift.Connection, func()) {
+	ctx := context.Background()
 	c, rollback := makeConnection(t)
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
@@ -153,32 +155,35 @@ func makeConnectionAuth(t *testing.T) (*swift.Connection, func()) {
 }
 
 func makeConnectionWithContainer(t *testing.T) (*swift.Connection, func()) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
-	err := c.ContainerCreate(CONTAINER, m1.ContainerHeaders())
+	err := c.ContainerCreate(ctx, CONTAINER, m1.ContainerHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c, func() {
-		c.ContainerDelete(CONTAINER)
+		_ = c.ContainerDelete(ctx, CONTAINER)
 		rollback()
 	}
 }
 
 func makeConnectionWithObject(t *testing.T) (*swift.Connection, func()) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
-	err := c.ObjectPutString(CONTAINER, OBJECT, CONTENTS, "")
+	err := c.ObjectPutString(ctx, CONTAINER, OBJECT, CONTENTS, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c, func() {
-		c.ObjectDelete(CONTAINER, OBJECT)
+		_ = c.ObjectDelete(ctx, CONTAINER, OBJECT)
 		rollback()
 	}
 }
 
 func makeConnectionWithObjectHeaders(t *testing.T) (*swift.Connection, func()) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
-	err := c.ObjectUpdate(CONTAINER, OBJECT, m1.ObjectHeaders())
+	err := c.ObjectUpdate(ctx, CONTAINER, OBJECT, m1.ObjectHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,11 +191,12 @@ func makeConnectionWithObjectHeaders(t *testing.T) (*swift.Connection, func()) {
 }
 
 func makeConnectionWithVersionsContainer(t *testing.T) (*swift.Connection, func()) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
-	err := c.VersionContainerCreate(CURRENT_CONTAINER, VERSIONS_CONTAINER)
+	err := c.VersionContainerCreate(ctx, CURRENT_CONTAINER, VERSIONS_CONTAINER)
 	newRollback := func() {
-		c.ContainerDelete(CURRENT_CONTAINER)
-		c.ContainerDelete(VERSIONS_CONTAINER)
+		_ = c.ContainerDelete(ctx, CURRENT_CONTAINER)
+		_ = c.ContainerDelete(ctx, VERSIONS_CONTAINER)
 		rollback()
 	}
 	if err != nil {
@@ -204,34 +210,36 @@ func makeConnectionWithVersionsContainer(t *testing.T) (*swift.Connection, func(
 }
 
 func makeConnectionWithVersionsObject(t *testing.T) (*swift.Connection, func()) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithVersionsContainer(t)
-	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS, ""); err != nil {
+	if err := c.ObjectPutString(ctx, CURRENT_CONTAINER, OBJECT, CONTENTS, ""); err != nil {
 		t.Fatal(err)
 	}
 	// Version 2
-	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
+	if err := c.ObjectPutString(ctx, CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
 		t.Fatal(err)
 	}
 	// Version 3
-	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
+	if err := c.ObjectPutString(ctx, CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
 		t.Fatal(err)
 	}
 	return c, func() {
 		for i := 0; i < 3; i++ {
-			c.ObjectDelete(CURRENT_CONTAINER, OBJECT)
+			_ = c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT)
 		}
 		rollback()
 	}
 }
 
 func makeConnectionWithSegmentsContainer(t *testing.T) (*swift.Connection, func()) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
-	err := c.ContainerCreate(SEGMENTS_CONTAINER, swift.Headers{})
+	err := c.ContainerCreate(ctx, SEGMENTS_CONTAINER, swift.Headers{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c, func() {
-		err = c.ContainerDelete(SEGMENTS_CONTAINER)
+		err = c.ContainerDelete(ctx, SEGMENTS_CONTAINER)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -240,13 +248,14 @@ func makeConnectionWithSegmentsContainer(t *testing.T) (*swift.Connection, func(
 }
 
 func makeConnectionWithDLO(t *testing.T) (*swift.Connection, func()) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	opts := swift.LargeObjectOpts{
 		Container:   CONTAINER,
 		ObjectName:  OBJECT,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.DynamicLargeObjectCreate(&opts)
+	out, err := c.DynamicLargeObjectCreate(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,24 +265,25 @@ func makeConnectionWithDLO(t *testing.T) (*swift.Connection, func()) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	return c, func() {
-		c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+		_ = c.DynamicLargeObjectDelete(ctx, CONTAINER, OBJECT)
 		rollback()
 	}
 }
 
 func makeConnectionWithSLO(t *testing.T) (*swift.Connection, func()) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	opts := swift.LargeObjectOpts{
 		Container:   CONTAINER,
 		ObjectName:  OBJECT,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.StaticLargeObjectCreate(&opts)
+	out, err := c.StaticLargeObjectCreate(ctx, &opts)
 	if err != nil {
 		if err == swift.SLONotSupported {
 			t.Skip("SLO not supported")
@@ -287,12 +297,12 @@ func makeConnectionWithSLO(t *testing.T) (*swift.Connection, func()) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	return c, func() {
-		c.StaticLargeObjectDelete(CONTAINER, OBJECT)
+		_ = c.StaticLargeObjectDelete(ctx, CONTAINER, OBJECT)
 		rollback()
 	}
 }
@@ -303,12 +313,14 @@ func isV3Api() bool {
 }
 
 func getSwinftInfo(t *testing.T) (info swift.SwiftInfo, err error) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
-	return c.QueryInfo()
+	return c.QueryInfo(ctx)
 }
 
 func TestTransport(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnection(t)
 	defer rollback()
 
@@ -326,7 +338,7 @@ func TestTransport(t *testing.T) {
 
 	c.Transport = tr
 
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
@@ -337,13 +349,14 @@ func TestTransport(t *testing.T) {
 
 // The following Test functions are run in order - this one must come before the others!
 func TestV1V2Authenticate(t *testing.T) {
+	ctx := context.Background()
 	if isV3Api() {
 		return
 	}
 	c, rollback := makeConnection(t)
 	defer rollback()
 
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
@@ -353,6 +366,7 @@ func TestV1V2Authenticate(t *testing.T) {
 }
 
 func TestV3AuthenticateWithDomainNameAndTenantId(t *testing.T) {
+	ctx := context.Background()
 	if !isV3Api() {
 		return
 	}
@@ -365,7 +379,7 @@ func TestV3AuthenticateWithDomainNameAndTenantId(t *testing.T) {
 	c.TenantId = os.Getenv("SWIFT_TENANT_ID")
 	c.DomainId = ""
 
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
@@ -375,6 +389,7 @@ func TestV3AuthenticateWithDomainNameAndTenantId(t *testing.T) {
 }
 
 func TestV3TrustWithTrustId(t *testing.T) {
+	ctx := context.Background()
 	if !isV3Api() {
 		return
 	}
@@ -384,7 +399,7 @@ func TestV3TrustWithTrustId(t *testing.T) {
 
 	c.TrustId = os.Getenv("SWIFT_TRUST_ID")
 
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
@@ -394,6 +409,7 @@ func TestV3TrustWithTrustId(t *testing.T) {
 }
 
 func TestV3AuthenticateWithDomainIdAndTenantId(t *testing.T) {
+	ctx := context.Background()
 	if !isV3Api() {
 		return
 	}
@@ -406,7 +422,7 @@ func TestV3AuthenticateWithDomainIdAndTenantId(t *testing.T) {
 	c.TenantId = os.Getenv("SWIFT_TENANT_ID")
 	c.DomainId = os.Getenv("SWIFT_API_DOMAIN_ID")
 
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
@@ -416,6 +432,7 @@ func TestV3AuthenticateWithDomainIdAndTenantId(t *testing.T) {
 }
 
 func TestV3AuthenticateWithDomainNameAndTenantName(t *testing.T) {
+	ctx := context.Background()
 	if !isV3Api() {
 		return
 	}
@@ -428,7 +445,7 @@ func TestV3AuthenticateWithDomainNameAndTenantName(t *testing.T) {
 	c.TenantId = ""
 	c.DomainId = ""
 
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
@@ -438,6 +455,7 @@ func TestV3AuthenticateWithDomainNameAndTenantName(t *testing.T) {
 }
 
 func TestV3AuthenticateWithDomainIdAndTenantName(t *testing.T) {
+	ctx := context.Background()
 	if !isV3Api() {
 		return
 	}
@@ -450,7 +468,7 @@ func TestV3AuthenticateWithDomainIdAndTenantName(t *testing.T) {
 	c.TenantId = ""
 	c.DomainId = os.Getenv("SWIFT_API_DOMAIN_ID")
 
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
@@ -463,6 +481,7 @@ func TestV3AuthenticateWithDomainIdAndTenantName(t *testing.T) {
 //
 // Run with -race to test
 func TestAuthenticateRace(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnection(t)
 	defer rollback()
 	var wg sync.WaitGroup
@@ -470,7 +489,7 @@ func TestAuthenticateRace(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := c.Authenticate()
+			err := c.Authenticate(ctx)
 			if err != nil {
 				t.Fatal("Auth failed", err)
 			}
@@ -484,6 +503,7 @@ func TestAuthenticateRace(t *testing.T) {
 
 // Test a connection can be serialized and unserialized with JSON
 func TestSerializeConnectionJson(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
 	serializedConnection, err := json.Marshal(c)
@@ -498,7 +518,7 @@ func TestSerializeConnectionJson(t *testing.T) {
 	if !c2.Authenticated() {
 		t.Fatal("Should be authenticated")
 	}
-	_, _, err = c2.Account()
+	_, _, err = c2.Account(ctx)
 	if err != nil {
 		t.Fatalf("Failed to use unserialized connection: %v", err)
 	}
@@ -506,6 +526,7 @@ func TestSerializeConnectionJson(t *testing.T) {
 
 // Test a connection can be serialized and unserialized with XML
 func TestSerializeConnectionXml(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
 	serializedConnection, err := xml.Marshal(c)
@@ -520,7 +541,7 @@ func TestSerializeConnectionXml(t *testing.T) {
 	if !c2.Authenticated() {
 		t.Fatal("Should be authenticated")
 	}
-	_, _, err = c2.Account()
+	_, _, err = c2.Account(ctx)
 	if err != nil {
 		t.Fatalf("Failed to use unserialized connection: %v", err)
 	}
@@ -528,19 +549,21 @@ func TestSerializeConnectionXml(t *testing.T) {
 
 // Test the reauthentication logic
 func TestOnReAuth(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
 	c.UnAuthenticate()
-	_, _, err := c.Account()
+	_, _, err := c.Account(ctx)
 	if err != nil {
 		t.Fatalf("Failed to reauthenticate: %v", err)
 	}
 }
 
 func TestAccount(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
-	info, headers, err := c.Account()
+	info, headers, err := c.Account(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,14 +595,15 @@ func compareMaps(t *testing.T, a, b map[string]string) {
 }
 
 func TestAccountUpdate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
-	err := c.AccountUpdate(m1.AccountHeaders())
+	err := c.AccountUpdate(ctx, m1.AccountHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, headers, err := c.Account()
+	_, headers, err := c.Account(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,12 +611,12 @@ func TestAccountUpdate(t *testing.T) {
 	delete(m, "temp-url-key") // remove X-Account-Meta-Temp-URL-Key if set
 	compareMaps(t, m, map[string]string{"hello": "1", "potato-salad": "2"})
 
-	err = c.AccountUpdate(m2.AccountHeaders())
+	err = c.AccountUpdate(ctx, m2.AccountHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, headers, err = c.Account()
+	_, headers, err = c.Account(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,22 +626,24 @@ func TestAccountUpdate(t *testing.T) {
 }
 
 func TestContainerCreate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
-	err := c.ContainerCreate(CONTAINER, m1.ContainerHeaders())
+	err := c.ContainerCreate(ctx, CONTAINER, m1.ContainerHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.ContainerDelete(CONTAINER)
+	err = c.ContainerDelete(ctx, CONTAINER)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestContainer(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	info, headers, err := c.Container(CONTAINER)
+	info, headers, err := c.Container(ctx, CONTAINER)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -634,13 +660,14 @@ func TestContainer(t *testing.T) {
 }
 
 func TestContainersAll(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	containers1, err := c.ContainersAll(nil)
+	containers1, err := c.ContainersAll(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	containers2, err := c.Containers(nil)
+	containers2, err := c.Containers(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,13 +682,14 @@ func TestContainersAll(t *testing.T) {
 }
 
 func TestContainersAllWithLimit(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	containers1, err := c.ContainersAll(&swift.ContainersOpts{Limit: 1})
+	containers1, err := c.ContainersAll(ctx, &swift.ContainersOpts{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	containers2, err := c.Containers(nil)
+	containers2, err := c.Containers(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -676,13 +704,14 @@ func TestContainersAllWithLimit(t *testing.T) {
 }
 
 func TestContainerUpdate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	err := c.ContainerUpdate(CONTAINER, m2.ContainerHeaders())
+	err := c.ContainerUpdate(ctx, CONTAINER, m2.ContainerHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, headers, err := c.Container(CONTAINER)
+	_, headers, err := c.Container(ctx, CONTAINER)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -690,9 +719,10 @@ func TestContainerUpdate(t *testing.T) {
 }
 
 func TestContainerNames(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	containers, err := c.ContainerNames(nil)
+	containers, err := c.ContainerNames(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,13 +739,14 @@ func TestContainerNames(t *testing.T) {
 }
 
 func TestContainerNamesAll(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	containers1, err := c.ContainerNamesAll(nil)
+	containers1, err := c.ContainerNamesAll(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	containers2, err := c.ContainerNames(nil)
+	containers2, err := c.ContainerNames(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -730,13 +761,14 @@ func TestContainerNamesAll(t *testing.T) {
 }
 
 func TestContainerNamesAllWithLimit(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	containers1, err := c.ContainerNamesAll(&swift.ContainersOpts{Limit: 1})
+	containers1, err := c.ContainerNamesAll(ctx, &swift.ContainersOpts{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	containers2, err := c.ContainerNames(nil)
+	containers2, err := c.ContainerNames(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -751,20 +783,21 @@ func TestContainerNamesAllWithLimit(t *testing.T) {
 }
 
 func TestObjectPutString(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	err := c.ObjectPutString(CONTAINER, OBJECT, CONTENTS, "")
+	err := c.ObjectPutString(ctx, CONTAINER, OBJECT, CONTENTS, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, OBJECT)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
 
-	info, _, err := c.Object(CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -780,6 +813,7 @@ func TestObjectPutString(t *testing.T) {
 }
 
 func TestObjectPut(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
 
@@ -788,7 +822,7 @@ func TestObjectPut(t *testing.T) {
 	// Set content size incorrectly - should produce an error
 	headers["Content-Length"] = strconv.FormatInt(CONTENT_SIZE-1, 10)
 	contents := bytes.NewBufferString(CONTENTS)
-	h, err := c.ObjectPut(CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
+	h, err := c.ObjectPut(ctx, CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
 	if err == nil {
 		t.Fatal("Expecting error but didn't get one")
 	}
@@ -796,12 +830,12 @@ func TestObjectPut(t *testing.T) {
 	// Now set content size correctly
 	contents = bytes.NewBufferString(CONTENTS)
 	headers["Content-Length"] = strconv.FormatInt(CONTENT_SIZE, 10)
-	h, err = c.ObjectPut(CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
+	h, err = c.ObjectPut(ctx, CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, OBJECT)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -812,7 +846,7 @@ func TestObjectPut(t *testing.T) {
 	}
 
 	// Fetch object info and compare
-	info, _, err := c.Object(CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -828,6 +862,7 @@ func TestObjectPut(t *testing.T) {
 }
 
 func TestObjectPutWithReauth(t *testing.T) {
+	ctx := context.Background()
 	if !swift.IS_AT_LEAST_GO_16 {
 		return
 	}
@@ -838,12 +873,12 @@ func TestObjectPutWithReauth(t *testing.T) {
 	c.AuthToken = "expiredtoken"
 
 	r := strings.NewReader(CONTENTS)
-	_, err := c.ObjectPut(CONTAINER, OBJECT, r, true, "", "text/plain", nil)
+	_, err := c.ObjectPut(ctx, CONTAINER, OBJECT, r, true, "", "text/plain", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	info, _, err := c.Object(CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -859,6 +894,7 @@ func TestObjectPutWithReauth(t *testing.T) {
 }
 
 func TestObjectPutStringWithReauth(t *testing.T) {
+	ctx := context.Background()
 	if !swift.IS_AT_LEAST_GO_16 {
 		return
 	}
@@ -868,12 +904,12 @@ func TestObjectPutStringWithReauth(t *testing.T) {
 	// Simulate that our auth token expired
 	c.AuthToken = "expiredtoken"
 
-	err := c.ObjectPutString(CONTAINER, OBJECT, CONTENTS, "")
+	err := c.ObjectPutString(ctx, CONTAINER, OBJECT, CONTENTS, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	info, _, err := c.Object(CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -889,20 +925,21 @@ func TestObjectPutStringWithReauth(t *testing.T) {
 }
 
 func TestObjectEmpty(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	err := c.ObjectPutString(CONTAINER, EMPTYOBJECT, "", "")
+	err := c.ObjectPutString(ctx, CONTAINER, EMPTYOBJECT, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, EMPTYOBJECT)
+		err = c.ObjectDelete(ctx, CONTAINER, EMPTYOBJECT)
 		if err != nil {
 			t.Error(err)
 		}
 	}()
 
-	info, _, err := c.Object(CONTAINER, EMPTYOBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, EMPTYOBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -918,6 +955,7 @@ func TestObjectEmpty(t *testing.T) {
 }
 
 func TestSymlinkObject(t *testing.T) {
+	ctx := context.Background()
 	info, err := getSwinftInfo(t)
 	if err != nil {
 		t.Fatal(err)
@@ -931,30 +969,30 @@ func TestSymlinkObject(t *testing.T) {
 	defer rollback()
 
 	// write target objects
-	err = c.ObjectPutBytes(CONTAINER, OBJECT, []byte(CONTENTS), "text/potato")
+	err = c.ObjectPutBytes(ctx, CONTAINER, OBJECT, []byte(CONTENTS), "text/potato")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, OBJECT)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Error(err)
 		}
 	}()
 
 	// test dynamic link
-	_, err = c.ObjectSymlinkCreate(CONTAINER, SYMLINK_OBJECT, "", CONTAINER, OBJECT, "")
+	_, err = c.ObjectSymlinkCreate(ctx, CONTAINER, SYMLINK_OBJECT, "", CONTAINER, OBJECT, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, SYMLINK_OBJECT)
+		err = c.ObjectDelete(ctx, CONTAINER, SYMLINK_OBJECT)
 		if err != nil {
 			t.Error(err)
 		}
 	}()
 
-	md, _, err := c.Object(CONTAINER, SYMLINK_OBJECT)
+	md, _, err := c.Object(ctx, CONTAINER, SYMLINK_OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -971,6 +1009,7 @@ func TestSymlinkObject(t *testing.T) {
 }
 
 func TestStaticSymlinkObject(t *testing.T) {
+	ctx := context.Background()
 	info, err := getSwinftInfo(t)
 	if err != nil {
 		t.Fatal(err)
@@ -989,12 +1028,12 @@ func TestStaticSymlinkObject(t *testing.T) {
 	defer rollback()
 
 	// write target objects
-	err = c.ObjectPutBytes(CONTAINER, OBJECT2, []byte(CONTENTS2), "text/tomato")
+	err = c.ObjectPutBytes(ctx, CONTAINER, OBJECT2, []byte(CONTENTS2), "text/tomato")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, OBJECT2)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT2)
 		if err != nil {
 			t.Error(err)
 		}
@@ -1002,23 +1041,23 @@ func TestStaticSymlinkObject(t *testing.T) {
 
 	// test static link
 	// first with the wrong target etag
-	_, err = c.ObjectSymlinkCreate(CONTAINER, SYMLINK_OBJECT2, "", CONTAINER, OBJECT2, CONTENT_MD5)
+	_, err = c.ObjectSymlinkCreate(ctx, CONTAINER, SYMLINK_OBJECT2, "", CONTAINER, OBJECT2, CONTENT_MD5)
 	if err == nil {
 		t.Error("Symlink with wrong target etag should have failed")
 	}
 
-	_, err = c.ObjectSymlinkCreate(CONTAINER, SYMLINK_OBJECT2, "", CONTAINER, OBJECT2, CONTENT2_MD5)
+	_, err = c.ObjectSymlinkCreate(ctx, CONTAINER, SYMLINK_OBJECT2, "", CONTAINER, OBJECT2, CONTENT2_MD5)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, SYMLINK_OBJECT2)
+		err = c.ObjectDelete(ctx, CONTAINER, SYMLINK_OBJECT2)
 		if err != nil {
 			t.Error(err)
 		}
 	}()
 
-	md, _, err := c.Object(CONTAINER, SYMLINK_OBJECT2)
+	md, _, err := c.Object(ctx, CONTAINER, SYMLINK_OBJECT2)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1034,20 +1073,21 @@ func TestStaticSymlinkObject(t *testing.T) {
 }
 
 func TestObjectPutBytes(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	err := c.ObjectPutBytes(CONTAINER, OBJECT, []byte(CONTENTS), "")
+	err := c.ObjectPutBytes(ctx, CONTAINER, OBJECT, []byte(CONTENTS), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, OBJECT)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Error(err)
 		}
 	}()
 
-	info, _, err := c.Object(CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1063,20 +1103,21 @@ func TestObjectPutBytes(t *testing.T) {
 }
 
 func TestObjectPutMimeType(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	err := c.ObjectPutString(CONTAINER, "test.jpg", CONTENTS, "")
+	err := c.ObjectPutString(ctx, CONTAINER, "test.jpg", CONTENTS, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, "test.jpg")
+		err = c.ObjectDelete(ctx, CONTAINER, "test.jpg")
 		if err != nil {
 			t.Error(err)
 		}
 	}()
 
-	info, _, err := c.Object(CONTAINER, "test.jpg")
+	info, _, err := c.Object(ctx, CONTAINER, "test.jpg")
 	if err != nil {
 		t.Error(err)
 	}
@@ -1086,14 +1127,15 @@ func TestObjectPutMimeType(t *testing.T) {
 }
 
 func TestObjectCreate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	out, err := c.ObjectCreate(CONTAINER, OBJECT2, true, "", "", nil)
+	out, err := c.ObjectCreate(ctx, CONTAINER, OBJECT2, true, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, OBJECT2)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT2)
 		if err != nil {
 			t.Error(err)
 		}
@@ -1102,7 +1144,7 @@ func TestObjectCreate(t *testing.T) {
 	hash := md5.New()
 	out2 := io.MultiWriter(out, buf, hash)
 	for i := 0; i < 100; i++ {
-		fmt.Fprintf(out2, "%d %s\n", i, CONTENTS)
+		_, _ = fmt.Fprintf(out2, "%d %s\n", i, CONTENTS)
 	}
 	// Ensure Headers fails if called prematurely
 	_, err = out.Headers()
@@ -1114,7 +1156,7 @@ func TestObjectCreate(t *testing.T) {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT2)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1138,7 +1180,7 @@ func TestObjectCreate(t *testing.T) {
 	}
 
 	// Now with hash instead
-	out, err = c.ObjectCreate(CONTAINER, OBJECT2, false, fmt.Sprintf("%x", hash.Sum(nil)), "", nil)
+	out, err = c.ObjectCreate(ctx, CONTAINER, OBJECT2, false, fmt.Sprintf("%x", hash.Sum(nil)), "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1150,7 +1192,7 @@ func TestObjectCreate(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	contents, err = c.ObjectGetString(CONTAINER, OBJECT2)
+	contents, err = c.ObjectGetString(ctx, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1159,12 +1201,12 @@ func TestObjectCreate(t *testing.T) {
 	}
 
 	// Now with bad hash
-	out, err = c.ObjectCreate(CONTAINER, OBJECT2, false, CONTENT_MD5, "", nil)
+	out, err = c.ObjectCreate(ctx, CONTAINER, OBJECT2, false, CONTENT_MD5, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// FIXME: work around bug which produces 503 not 422 for empty corrupted files
-	fmt.Fprintf(out, "Sausage")
+	_, _ = fmt.Fprintf(out, "Sausage")
 	err = out.Close()
 	if err != swift.ObjectCorrupted {
 		t.Error("Expecting object corrupted not", err)
@@ -1172,15 +1214,16 @@ func TestObjectCreate(t *testing.T) {
 }
 
 func TestObjectCreateAbort(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
 
-	out, err := c.ObjectCreate(CONTAINER, OBJECT2, true, "", "", nil)
+	out, err := c.ObjectCreate(ctx, CONTAINER, OBJECT2, true, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		_ = c.ObjectDelete(CONTAINER, OBJECT2) // Ignore error
+		_ = c.ObjectDelete(ctx, CONTAINER, OBJECT2) // Ignore error
 	}()
 
 	expectedContents := "foo"
@@ -1195,16 +1238,17 @@ func TestObjectCreateAbort(t *testing.T) {
 		t.Errorf("Unexpected error %#v", err)
 	}
 
-	_, err = c.ObjectGetString(CONTAINER, OBJECT2)
+	_, err = c.ObjectGetString(ctx, CONTAINER, OBJECT2)
 	if err != swift.ObjectNotFound {
 		t.Errorf("Unexpected error: %#v", err)
 	}
 }
 
 func TestObjectGetString(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1214,9 +1258,10 @@ func TestObjectGetString(t *testing.T) {
 }
 
 func TestObjectGetBytes(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
-	contents, err := c.ObjectGetBytes(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetBytes(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1226,9 +1271,10 @@ func TestObjectGetBytes(t *testing.T) {
 }
 
 func TestObjectOpen(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
-	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	file, _, err := c.ObjectOpen(ctx, CONTAINER, OBJECT, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1250,9 +1296,10 @@ func TestObjectOpen(t *testing.T) {
 }
 
 func TestObjectOpenPartial(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
-	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	file, _, err := c.ObjectOpen(ctx, CONTAINER, OBJECT, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1274,14 +1321,15 @@ func TestObjectOpenPartial(t *testing.T) {
 }
 
 func TestObjectOpenLength(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
-	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	file, _, err := c.ObjectOpen(ctx, CONTAINER, OBJECT, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// FIXME ideally this would check both branches of the Length() code
-	n, err := file.Length()
+	n, err := file.Length(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1295,9 +1343,10 @@ func TestObjectOpenLength(t *testing.T) {
 }
 
 func TestObjectOpenNotModified(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
-	_, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, swift.Headers{
+	_, _, err := c.ObjectOpen(ctx, CONTAINER, OBJECT, true, swift.Headers{
 		"If-None-Match": CONTENT_MD5,
 	})
 	if err != swift.NotModified {
@@ -1306,6 +1355,7 @@ func TestObjectOpenNotModified(t *testing.T) {
 }
 
 func TestObjectOpenSeek(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
 
@@ -1331,7 +1381,7 @@ func TestObjectOpenSeek(t *testing.T) {
 		{2, -4, 1},
 	}
 
-	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	file, _, err := c.ObjectOpen(ctx, CONTAINER, OBJECT, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1339,7 +1389,7 @@ func TestObjectOpenSeek(t *testing.T) {
 	for _, p := range plan {
 		if p.whence >= 0 {
 			var result int64
-			result, err = file.Seek(p.offset, p.whence)
+			result, err = file.Seek(ctx, p.offset, p.whence)
 			if err != nil {
 				t.Fatal(err, p)
 			}
@@ -1372,13 +1422,14 @@ func TestObjectOpenSeek(t *testing.T) {
 
 // Test seeking to the end to find the file size
 func TestObjectOpenSeekEnd(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
-	file, _, err := c.ObjectOpen(CONTAINER, OBJECT, true, nil)
+	file, _, err := c.ObjectOpen(ctx, CONTAINER, OBJECT, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := file.Seek(0, 2) // seek to end
+	n, err := file.Seek(ctx, 0, 2) // seek to end
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1397,7 +1448,7 @@ func TestObjectOpenSeekEnd(t *testing.T) {
 	}
 
 	// Now seek back to start and check we can read the file
-	n, err = file.Seek(0, 0) // seek to start
+	n, err = file.Seek(ctx, 0, 0) // seek to start
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1416,9 +1467,10 @@ func TestObjectOpenSeekEnd(t *testing.T) {
 }
 
 func TestObjectUpdate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
-	err := c.ObjectUpdate(CONTAINER, OBJECT, m1.ObjectHeaders())
+	err := c.ObjectUpdate(ctx, CONTAINER, OBJECT, m1.ObjectHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1432,9 +1484,10 @@ func checkTime(t *testing.T, when time.Time, low, high int) {
 }
 
 func TestObject(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	object, headers, err := c.Object(CONTAINER, OBJECT)
+	object, headers, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1446,13 +1499,14 @@ func TestObject(t *testing.T) {
 }
 
 func TestObjectUpdate2(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	err := c.ObjectUpdate(CONTAINER, OBJECT, m2.ObjectHeaders())
+	err := c.ObjectUpdate(ctx, CONTAINER, OBJECT, m2.ObjectHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, headers, err := c.Object(CONTAINER, OBJECT)
+	_, headers, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1460,9 +1514,10 @@ func TestObjectUpdate2(t *testing.T) {
 }
 
 func TestContainers(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	containers, err := c.Containers(nil)
+	containers, err := c.Containers(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1488,9 +1543,10 @@ func TestContainers(t *testing.T) {
 }
 
 func TestObjectNames(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	objects, err := c.ObjectNames(CONTAINER, nil)
+	objects, err := c.ObjectNames(ctx, CONTAINER, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1500,9 +1556,10 @@ func TestObjectNames(t *testing.T) {
 }
 
 func TestObjectNamesAll(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	objects, err := c.ObjectNamesAll(CONTAINER, nil)
+	objects, err := c.ObjectNamesAll(ctx, CONTAINER, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1512,9 +1569,10 @@ func TestObjectNamesAll(t *testing.T) {
 }
 
 func TestObjectNamesAllWithLimit(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	objects, err := c.ObjectNamesAll(CONTAINER, &swift.ObjectsOpts{Limit: 1})
+	objects, err := c.ObjectNamesAll(ctx, CONTAINER, &swift.ObjectsOpts{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1524,11 +1582,12 @@ func TestObjectNamesAllWithLimit(t *testing.T) {
 }
 
 func TestObjectsWalk(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
 	objects := make([]string, 0)
-	err := c.ObjectsWalk(container, nil, func(opts *swift.ObjectsOpts) (interface{}, error) {
-		newObjects, err := c.ObjectNames(CONTAINER, opts)
+	err := c.ObjectsWalk(ctx, container, nil, func(ctx context.Context, opts *swift.ObjectsOpts) (interface{}, error) {
+		newObjects, err := c.ObjectNames(ctx, CONTAINER, opts)
 		if err == nil {
 			objects = append(objects, newObjects...)
 		}
@@ -1543,9 +1602,10 @@ func TestObjectsWalk(t *testing.T) {
 }
 
 func TestObjects(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
+	objects, err := c.Objects(ctx, CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1560,17 +1620,18 @@ func TestObjects(t *testing.T) {
 }
 
 func TestObjectsDirectory(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	err := c.ObjectPutString(CONTAINER, "directory", "", "application/directory")
+	err := c.ObjectPutString(ctx, CONTAINER, "directory", "", "application/directory")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.ObjectDelete(CONTAINER, "directory")
+	defer c.ObjectDelete(ctx, CONTAINER, "directory")
 
 	// Look for the directory object and check we aren't confusing
 	// it with a pseudo directory object
-	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
+	objects, err := c.Objects(ctx, CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1594,16 +1655,17 @@ func TestObjectsDirectory(t *testing.T) {
 }
 
 func TestObjectsPseudoDirectory(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	err := c.ObjectPutString(CONTAINER, "directory/puppy.jpg", "cute puppy", "")
+	err := c.ObjectPutString(ctx, CONTAINER, "directory/puppy.jpg", "cute puppy", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.ObjectDelete(CONTAINER, "directory/puppy.jpg")
+	defer c.ObjectDelete(ctx, CONTAINER, "directory/puppy.jpg")
 
 	// Look for the pseudo directory
-	objects, err := c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
+	objects, err := c.Objects(ctx, CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1625,7 +1687,7 @@ func TestObjectsPseudoDirectory(t *testing.T) {
 	}
 
 	// Look in the pseudo directory now
-	objects, err = c.Objects(CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: "directory/"})
+	objects, err = c.Objects(ctx, CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: "directory/"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1640,9 +1702,10 @@ func TestObjectsPseudoDirectory(t *testing.T) {
 }
 
 func TestObjectsAll(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	objects, err := c.ObjectsAll(CONTAINER, nil)
+	objects, err := c.ObjectsAll(ctx, CONTAINER, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1652,9 +1715,10 @@ func TestObjectsAll(t *testing.T) {
 }
 
 func TestObjectsAllWithLimit(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	objects, err := c.ObjectsAll(CONTAINER, &swift.ObjectsOpts{Limit: 1})
+	objects, err := c.ObjectsAll(ctx, CONTAINER, &swift.ObjectsOpts{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1664,9 +1728,10 @@ func TestObjectsAllWithLimit(t *testing.T) {
 }
 
 func TestObjectNamesWithPath(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	objects, err := c.ObjectNames(CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: ""})
+	objects, err := c.ObjectNames(ctx, CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: ""})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1674,7 +1739,7 @@ func TestObjectNamesWithPath(t *testing.T) {
 		t.Error("Bad listing with path", objects)
 	}
 	// fmt.Println(objects)
-	objects, err = c.ObjectNames(CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: "Downloads/"})
+	objects, err = c.ObjectNames(ctx, CONTAINER, &swift.ObjectsOpts{Delimiter: '/', Path: "Downloads/"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1684,33 +1749,36 @@ func TestObjectNamesWithPath(t *testing.T) {
 }
 
 func TestObjectCopy(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	_, err := c.ObjectCopy(CONTAINER, OBJECT, CONTAINER, OBJECT2, nil)
+	_, err := c.ObjectCopy(ctx, CONTAINER, OBJECT, CONTAINER, OBJECT2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.ObjectDelete(CONTAINER, OBJECT2)
+	err = c.ObjectDelete(ctx, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestObjectCopyDifficultName(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
 	const dest = OBJECT + "?param %30%31%32 £100"
-	_, err := c.ObjectCopy(CONTAINER, OBJECT, CONTAINER, dest, nil)
+	_, err := c.ObjectCopy(ctx, CONTAINER, OBJECT, CONTAINER, dest, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.ObjectDelete(CONTAINER, dest)
+	err = c.ObjectDelete(ctx, CONTAINER, dest)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestObjectCopyWithMetadata(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
 	m := swift.Metadata{}
@@ -1718,18 +1786,18 @@ func TestObjectCopyWithMetadata(t *testing.T) {
 	m["hello"] = "9"
 	h := m.ObjectHeaders()
 	h["Content-Type"] = "image/jpeg"
-	_, err := c.ObjectCopy(CONTAINER, OBJECT, CONTAINER, OBJECT2, h)
+	_, err := c.ObjectCopy(ctx, CONTAINER, OBJECT, CONTAINER, OBJECT2, h)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, OBJECT2)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT2)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
 	// Re-read the metadata to see if it is correct
-	_, headers, err := c.Object(CONTAINER, OBJECT2)
+	_, headers, err := c.Object(ctx, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1740,24 +1808,25 @@ func TestObjectCopyWithMetadata(t *testing.T) {
 }
 
 func TestObjectMove(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	err := c.ObjectMove(CONTAINER, OBJECT, CONTAINER, OBJECT2)
+	err := c.ObjectMove(ctx, CONTAINER, OBJECT, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	testExistenceAfterDelete(t, c, CONTAINER, OBJECT)
-	_, _, err = c.Object(CONTAINER, OBJECT2)
+	_, _, err = c.Object(ctx, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = c.ObjectMove(CONTAINER, OBJECT2, CONTAINER, OBJECT)
+	err = c.ObjectMove(ctx, CONTAINER, OBJECT2, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
 	testExistenceAfterDelete(t, c, CONTAINER, OBJECT2)
-	_, headers, err := c.Object(CONTAINER, OBJECT)
+	_, headers, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1765,14 +1834,15 @@ func TestObjectMove(t *testing.T) {
 }
 
 func TestObjectUpdateContentType(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	err := c.ObjectUpdateContentType(CONTAINER, OBJECT, "text/potato")
+	err := c.ObjectUpdateContentType(ctx, CONTAINER, OBJECT, "text/potato")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Re-read the metadata to see if it is correct
-	_, headers, err := c.Object(CONTAINER, OBJECT)
+	_, headers, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1783,12 +1853,13 @@ func TestObjectUpdateContentType(t *testing.T) {
 }
 
 func TestVersionContainerCreate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
-	err := c.VersionContainerCreate(CURRENT_CONTAINER, VERSIONS_CONTAINER)
+	err := c.VersionContainerCreate(ctx, CURRENT_CONTAINER, VERSIONS_CONTAINER)
 	defer func() {
-		c.ContainerDelete(CURRENT_CONTAINER)
-		c.ContainerDelete(VERSIONS_CONTAINER)
+		_ = c.ContainerDelete(ctx, CURRENT_CONTAINER)
+		_ = c.ContainerDelete(ctx, VERSIONS_CONTAINER)
 	}()
 	if err != nil {
 		if err == swift.Forbidden {
@@ -1800,6 +1871,7 @@ func TestVersionContainerCreate(t *testing.T) {
 }
 
 func TestVersionObjectAdd(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithVersionsContainer(t)
 	defer rollback()
 	if skipVersionTests {
@@ -1807,43 +1879,43 @@ func TestVersionObjectAdd(t *testing.T) {
 		return
 	}
 	// Version 1
-	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS, ""); err != nil {
+	if err := c.ObjectPutString(ctx, CURRENT_CONTAINER, OBJECT, CONTENTS, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT)
+		err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
-	if contents, err := c.ObjectGetString(CURRENT_CONTAINER, OBJECT); err != nil {
+	if contents, err := c.ObjectGetString(ctx, CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
 	} else if contents != CONTENTS {
 		t.Error("Contents wrong")
 	}
 
 	// Version 2
-	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
+	if err := c.ObjectPutString(ctx, CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT)
+		err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
-	if contents, err := c.ObjectGetString(CURRENT_CONTAINER, OBJECT); err != nil {
+	if contents, err := c.ObjectGetString(ctx, CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
 	} else if contents != CONTENTS2 {
 		t.Error("Contents wrong")
 	}
 
 	// Version 3
-	if err := c.ObjectPutString(CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
+	if err := c.ObjectPutString(ctx, CURRENT_CONTAINER, OBJECT, CONTENTS2, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT)
+		err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1851,13 +1923,14 @@ func TestVersionObjectAdd(t *testing.T) {
 }
 
 func TestVersionObjectList(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithVersionsObject(t)
 	defer rollback()
 	if skipVersionTests {
 		t.Log("Server doesn't support Versions - skipping test")
 		return
 	}
-	list, err := c.VersionObjectList(VERSIONS_CONTAINER, OBJECT)
+	list, err := c.VersionObjectList(ctx, VERSIONS_CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1868,6 +1941,7 @@ func TestVersionObjectList(t *testing.T) {
 }
 
 func TestVersionObjectDelete(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithVersionsObject(t)
 	defer rollback()
 	if skipVersionTests {
@@ -1875,17 +1949,17 @@ func TestVersionObjectDelete(t *testing.T) {
 		return
 	}
 	// Delete Version 3
-	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
+	if err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
 	}
 
 	// Delete Version 2
-	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
+	if err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
 	}
 
 	// Contents should be reverted to Version 1
-	if contents, err := c.ObjectGetString(CURRENT_CONTAINER, OBJECT); err != nil {
+	if contents, err := c.ObjectGetString(ctx, CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
 	} else if contents != CONTENTS {
 		t.Error("Contents wrong")
@@ -1893,6 +1967,7 @@ func TestVersionObjectDelete(t *testing.T) {
 }
 
 func TestVersionDeleteContent(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithVersionsObject(t)
 	defer rollback()
 	if skipVersionTests {
@@ -1900,18 +1975,18 @@ func TestVersionDeleteContent(t *testing.T) {
 		return
 	}
 	// Delete Version 3
-	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
+	if err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
 	}
 	// Delete Version 2
-	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
+	if err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
 	}
 	// Delete Version 1
-	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != nil {
+	if err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.ObjectDelete(CURRENT_CONTAINER, OBJECT); err != swift.ObjectNotFound {
+	if err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT); err != swift.ObjectNotFound {
 		t.Fatalf("Expecting Object not found error, got: %v", err)
 	}
 }
@@ -1919,8 +1994,9 @@ func TestVersionDeleteContent(t *testing.T) {
 // Check for non existence after delete
 // May have to do it a few times to wait for swift to be consistent.
 func testExistenceAfterDelete(t *testing.T, c *swift.Connection, container, object string) {
+	ctx := context.Background()
 	for i := 10; i <= 0; i-- {
-		_, _, err := c.Object(container, object)
+		_, _, err := c.Object(ctx, container, object)
 		if err == swift.ObjectNotFound {
 			break
 		}
@@ -1932,23 +2008,25 @@ func testExistenceAfterDelete(t *testing.T, c *swift.Connection, container, obje
 }
 
 func TestObjectDelete(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)
 	defer rollback()
-	err := c.ObjectDelete(CONTAINER, OBJECT)
+	err := c.ObjectDelete(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
 	testExistenceAfterDelete(t, c, CONTAINER, OBJECT)
-	err = c.ObjectDelete(CONTAINER, OBJECT)
+	err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
 	if err != swift.ObjectNotFound {
 		t.Fatal("Expecting Object not found", err)
 	}
 }
 
 func TestBulkDelete(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	result, err := c.BulkDelete(CONTAINER, []string{OBJECT})
+	result, err := c.BulkDelete(ctx, CONTAINER, []string{OBJECT})
 	if err == swift.Forbidden {
 		t.Log("Server doesn't support BulkDelete - skipping test")
 		return
@@ -1962,11 +2040,11 @@ func TestBulkDelete(t *testing.T) {
 	if result.NumberDeleted != 0 {
 		t.Error("Expected 0, actual:", result.NumberDeleted)
 	}
-	err = c.ObjectPutString(CONTAINER, OBJECT, CONTENTS, "")
+	err = c.ObjectPutString(ctx, CONTAINER, OBJECT, CONTENTS, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err = c.BulkDelete(CONTAINER, []string{OBJECT2, OBJECT})
+	result, err = c.BulkDelete(ctx, CONTAINER, []string{OBJECT2, OBJECT})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1980,6 +2058,7 @@ func TestBulkDelete(t *testing.T) {
 }
 
 func TestBulkUpload(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
 	buffer := new(bytes.Buffer)
@@ -2004,7 +2083,7 @@ func TestBulkUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := c.BulkUpload(CONTAINER, buffer, swift.UploadTar, nil)
+	result, err := c.BulkUpload(ctx, CONTAINER, buffer, swift.UploadTar, nil)
 	if err == swift.Forbidden {
 		t.Log("Server doesn't support BulkUpload - skipping test")
 		return
@@ -2013,11 +2092,11 @@ func TestBulkUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, OBJECT)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = c.ObjectDelete(CONTAINER, OBJECT2)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2027,31 +2106,32 @@ func TestBulkUpload(t *testing.T) {
 	}
 	t.Log("Errors:", result.Errors)
 
-	_, _, err = c.Object(CONTAINER, OBJECT)
+	_, _, err = c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error("Expecting object to be found")
 	}
-	_, _, err = c.Object(CONTAINER, OBJECT2)
+	_, _, err = c.Object(ctx, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Error("Expecting object to be found")
 	}
 }
 
 func TestObjectDifficultName(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
 	const name = `hello? sausage/êé/Hello, 世界/ " ' @ < > & ?/`
-	err := c.ObjectPutString(CONTAINER, name, CONTENTS, "")
+	err := c.ObjectPutString(ctx, CONTAINER, name, CONTENTS, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, name)
+		err = c.ObjectDelete(ctx, CONTAINER, name)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
-	objects, err := c.ObjectNamesAll(CONTAINER, nil)
+	objects, err := c.ObjectNamesAll(ctx, CONTAINER, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2068,14 +2148,15 @@ func TestObjectDifficultName(t *testing.T) {
 }
 
 func TestTempUrl(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	err := c.ObjectPutBytes(CONTAINER, OBJECT, []byte(CONTENTS), "")
+	err := c.ObjectPutBytes(ctx, CONTAINER, OBJECT, []byte(CONTENTS), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ObjectDelete(CONTAINER, OBJECT)
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2083,7 +2164,7 @@ func TestTempUrl(t *testing.T) {
 
 	m := swift.Metadata{}
 	m["temp-url-key"] = SECRET_KEY
-	err = c.AccountUpdate(m.AccountHeaders())
+	err = c.AccountUpdate(ctx, m.AccountHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2117,9 +2198,10 @@ func TestTempUrl(t *testing.T) {
 }
 
 func TestQueryInfo(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
-	infos, err := c.QueryInfo()
+	infos, err := c.QueryInfo(ctx)
 	if err != nil {
 		t.Log("Server doesn't support querying info")
 		return
@@ -2130,6 +2212,7 @@ func TestQueryInfo(t *testing.T) {
 }
 
 func TestDLOCreate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	defer rollback()
 
@@ -2138,12 +2221,12 @@ func TestDLOCreate(t *testing.T) {
 		ObjectName:  OBJECT,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.DynamicLargeObjectCreate(&opts)
+	out, err := c.DynamicLargeObjectCreate(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+		err = c.DynamicLargeObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2157,19 +2240,19 @@ func TestDLOCreate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
 	if contents != expected {
 		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
 	}
-	info, _, err := c.Object(CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2182,6 +2265,7 @@ func TestDLOCreate(t *testing.T) {
 }
 
 func TestDLOInsert(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithDLO(t)
 	defer rollback()
 	opts := swift.LargeObjectOpts{
@@ -2190,7 +2274,7 @@ func TestDLOInsert(t *testing.T) {
 		CheckHash:   true,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.DynamicLargeObjectCreateFile(&opts)
+	out, err := c.DynamicLargeObjectCreateFile(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2201,13 +2285,13 @@ func TestDLOInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
-	err = out.Close()
+	_, _ = fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2217,6 +2301,7 @@ func TestDLOInsert(t *testing.T) {
 }
 
 func TestDLOAppend(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithDLO(t)
 	defer rollback()
 	opts := swift.LargeObjectOpts{
@@ -2226,12 +2311,12 @@ func TestDLOAppend(t *testing.T) {
 		CheckHash:   true,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.DynamicLargeObjectCreateFile(&opts)
+	out, err := c.DynamicLargeObjectCreateFile(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	buf := bytes.NewBuffer([]byte(contents))
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
@@ -2240,12 +2325,12 @@ func TestDLOAppend(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err = c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err = c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2255,6 +2340,7 @@ func TestDLOAppend(t *testing.T) {
 }
 
 func TestDLOTruncate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithDLO(t)
 	defer rollback()
 	opts := swift.LargeObjectOpts{
@@ -2264,7 +2350,7 @@ func TestDLOTruncate(t *testing.T) {
 		CheckHash:   true,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.DynamicLargeObjectCreateFile(&opts)
+	out, err := c.DynamicLargeObjectCreateFile(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2275,12 +2361,12 @@ func TestDLOTruncate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2290,25 +2376,26 @@ func TestDLOTruncate(t *testing.T) {
 }
 
 func TestDLOMove(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithDLO(t)
 	defer rollback()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = c.DynamicLargeObjectMove(CONTAINER, OBJECT, CONTAINER, OBJECT2)
+	err = c.DynamicLargeObjectMove(ctx, CONTAINER, OBJECT, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT2)
+		err = c.DynamicLargeObjectDelete(ctx, CONTAINER, OBJECT2)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
 
-	contents2, err := c.ObjectGetString(CONTAINER, OBJECT2)
+	contents2, err := c.ObjectGetString(ctx, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2319,6 +2406,7 @@ func TestDLOMove(t *testing.T) {
 }
 
 func TestDLONoSegmentContainer(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithDLO(t)
 	defer rollback()
 	opts := swift.LargeObjectOpts{
@@ -2327,7 +2415,7 @@ func TestDLONoSegmentContainer(t *testing.T) {
 		ContentType:      "image/jpeg",
 		SegmentContainer: CONTAINER,
 	}
-	out, err := c.DynamicLargeObjectCreate(&opts)
+	out, err := c.DynamicLargeObjectCreate(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2340,12 +2428,12 @@ func TestDLONoSegmentContainer(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2355,6 +2443,7 @@ func TestDLONoSegmentContainer(t *testing.T) {
 }
 
 func TestDLOCreateMissingSegmentsInList(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
 
@@ -2369,17 +2458,17 @@ func TestDLOCreateMissingSegmentsInList(t *testing.T) {
 			w.Header().Set(k, v[0])
 		}
 		w.WriteHeader(recorder.Code)
-		w.Write([]byte("null\n"))
+		_, _ = w.Write([]byte("null\n"))
 	})
 	defer srv.UnsetOverride(listURL)
 
 	headers := swift.Headers{}
-	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	err := c.ContainerCreate(ctx, SEGMENTS_CONTAINER, headers)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ContainerDelete(SEGMENTS_CONTAINER)
+		err = c.ContainerDelete(ctx, SEGMENTS_CONTAINER)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2390,12 +2479,12 @@ func TestDLOCreateMissingSegmentsInList(t *testing.T) {
 		ObjectName:  OBJECT,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.DynamicLargeObjectCreate(&opts)
+	out, err := c.DynamicLargeObjectCreate(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+		err = c.DynamicLargeObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2409,12 +2498,12 @@ func TestDLOCreateMissingSegmentsInList(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2424,6 +2513,7 @@ func TestDLOCreateMissingSegmentsInList(t *testing.T) {
 }
 
 func TestDLOCreateIncorrectSize(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
 
@@ -2446,17 +2536,17 @@ func TestDLOCreateIncorrectSize(t *testing.T) {
 			}
 		}
 		w.WriteHeader(recorder.Code)
-		w.Write(recorder.Body.Bytes())
+		_, _ = w.Write(recorder.Body.Bytes())
 	})
 	defer srv.UnsetOverride(listURL)
 
 	headers := swift.Headers{}
-	err := c.ContainerCreate(SEGMENTS_CONTAINER, headers)
+	err := c.ContainerCreate(ctx, SEGMENTS_CONTAINER, headers)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.ContainerDelete(SEGMENTS_CONTAINER)
+		err = c.ContainerDelete(ctx, SEGMENTS_CONTAINER)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2467,12 +2557,12 @@ func TestDLOCreateIncorrectSize(t *testing.T) {
 		ObjectName:  OBJECT,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.DynamicLargeObjectCreate(&opts)
+	out, err := c.DynamicLargeObjectCreate(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.DynamicLargeObjectDelete(CONTAINER, OBJECT)
+		err = c.DynamicLargeObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2485,7 +2575,7 @@ func TestDLOCreateIncorrectSize(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2493,7 +2583,7 @@ func TestDLOCreateIncorrectSize(t *testing.T) {
 		t.Errorf("Unexpected HEAD requests count, expected %d, got: %d", expectedHeadCount, headCount)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2503,6 +2593,7 @@ func TestDLOCreateIncorrectSize(t *testing.T) {
 }
 
 func TestDLOConcurrentWrite(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	defer rollback()
 
@@ -2517,12 +2608,12 @@ func TestDLOConcurrentWrite(t *testing.T) {
 			ObjectName:  objName,
 			ContentType: "image/jpeg",
 		}
-		out, err := c.DynamicLargeObjectCreate(&opts)
+		out, err := c.DynamicLargeObjectCreate(ctx, &opts)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer func() {
-			err = c.DynamicLargeObjectDelete(CONTAINER, objName)
+			err = c.DynamicLargeObjectDelete(ctx, CONTAINER, objName)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2544,12 +2635,12 @@ func TestDLOConcurrentWrite(t *testing.T) {
 				t.Fatalf("expected to write %d, got: %d", chunkSize, n)
 			}
 		}
-		err = out.Close()
+		err = out.CloseWithContext(ctx)
 		if err != nil {
 			t.Error(err)
 		}
 		expected := buf.String()
-		contents, err := c.ObjectGetString(CONTAINER, objName)
+		contents, err := c.ObjectGetString(ctx, CONTAINER, objName)
 		if err != nil {
 			t.Error(err)
 		}
@@ -2570,6 +2661,7 @@ func TestDLOConcurrentWrite(t *testing.T) {
 }
 
 func TestDLOSegmentation(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	defer rollback()
 
@@ -2582,7 +2674,7 @@ func TestDLOSegmentation(t *testing.T) {
 	}
 
 	testSegmentation(t, c, func() swift.LargeObjectFile {
-		out, err := c.DynamicLargeObjectCreate(&opts)
+		out, err := c.DynamicLargeObjectCreate(ctx, &opts)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2625,6 +2717,7 @@ func TestDLOSegmentation(t *testing.T) {
 }
 
 func TestDLOSegmentationBuffered(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	defer rollback()
 
@@ -2636,7 +2729,7 @@ func TestDLOSegmentationBuffered(t *testing.T) {
 	}
 
 	testSegmentation(t, c, func() swift.LargeObjectFile {
-		out, err := c.DynamicLargeObjectCreate(&opts)
+		out, err := c.DynamicLargeObjectCreate(ctx, &opts)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2679,6 +2772,7 @@ func TestDLOSegmentationBuffered(t *testing.T) {
 }
 
 func TestSLOCreate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	defer rollback()
 
@@ -2687,7 +2781,7 @@ func TestSLOCreate(t *testing.T) {
 		ObjectName:  OBJECT,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.StaticLargeObjectCreate(&opts)
+	out, err := c.StaticLargeObjectCreate(ctx, &opts)
 	if err != nil {
 		if err == swift.SLONotSupported {
 			t.Skip("SLO not supported")
@@ -2696,7 +2790,7 @@ func TestSLOCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.StaticLargeObjectDelete(CONTAINER, OBJECT)
+		err = c.StaticLargeObjectDelete(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2710,19 +2804,19 @@ func TestSLOCreate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
 	if contents != expected {
 		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
 	}
-	info, _, err := c.Object(CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2735,6 +2829,7 @@ func TestSLOCreate(t *testing.T) {
 }
 
 func TestSLOInsert(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSLO(t)
 	defer rollback()
 	opts := swift.LargeObjectOpts{
@@ -2742,7 +2837,7 @@ func TestSLOInsert(t *testing.T) {
 		ObjectName:  OBJECT,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.StaticLargeObjectCreateFile(&opts)
+	out, err := c.StaticLargeObjectCreateFile(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2753,13 +2848,13 @@ func TestSLOInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
-	err = out.Close()
+	_, _ = fmt.Fprintf(buf, "\n%d %s\n", 1, CONTENTS)
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2769,6 +2864,7 @@ func TestSLOInsert(t *testing.T) {
 }
 
 func TestSLOAppend(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSLO(t)
 	defer rollback()
 	opts := swift.LargeObjectOpts{
@@ -2778,12 +2874,12 @@ func TestSLOAppend(t *testing.T) {
 		CheckHash:   true,
 		ContentType: "image/jpeg",
 	}
-	out, err := c.StaticLargeObjectCreateFile(&opts)
+	out, err := c.StaticLargeObjectCreateFile(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	buf := bytes.NewBuffer([]byte(contents))
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
@@ -2792,12 +2888,12 @@ func TestSLOAppend(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err = c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err = c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2807,25 +2903,26 @@ func TestSLOAppend(t *testing.T) {
 }
 
 func TestSLOMove(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSLO(t)
 	defer rollback()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = c.StaticLargeObjectMove(CONTAINER, OBJECT, CONTAINER, OBJECT2)
+	err = c.StaticLargeObjectMove(ctx, CONTAINER, OBJECT, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		err = c.StaticLargeObjectDelete(CONTAINER, OBJECT2)
+		err = c.StaticLargeObjectDelete(ctx, CONTAINER, OBJECT2)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}()
 
-	contents2, err := c.ObjectGetString(CONTAINER, OBJECT2)
+	contents2, err := c.ObjectGetString(ctx, CONTAINER, OBJECT2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2836,6 +2933,7 @@ func TestSLOMove(t *testing.T) {
 }
 
 func TestSLONoSegmentContainer(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSLO(t)
 	defer rollback()
 
@@ -2845,7 +2943,7 @@ func TestSLONoSegmentContainer(t *testing.T) {
 		ContentType:      "image/jpeg",
 		SegmentContainer: CONTAINER,
 	}
-	out, err := c.StaticLargeObjectCreate(&opts)
+	out, err := c.StaticLargeObjectCreate(ctx, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2858,12 +2956,12 @@ func TestSLONoSegmentContainer(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = out.Close()
+	err = out.CloseWithContext(ctx)
 	if err != nil {
 		t.Error(err)
 	}
 	expected := buf.String()
-	contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Error(err)
 	}
@@ -2871,13 +2969,14 @@ func TestSLONoSegmentContainer(t *testing.T) {
 		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
 	}
 
-	err = c.StaticLargeObjectDelete(CONTAINER, OBJECT)
+	err = c.StaticLargeObjectDelete(ctx, CONTAINER, OBJECT)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestSLOMinChunkSize(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	defer rollback()
 	if srv == nil {
@@ -2886,10 +2985,10 @@ func TestSLOMinChunkSize(t *testing.T) {
 	}
 
 	srv.SetOverride("/info", func(w http.ResponseWriter, r *http.Request, recorder *httptest.ResponseRecorder) {
-		w.Write([]byte(`{"slo": {"min_segment_size": 4}}`))
+		_, _ = w.Write([]byte(`{"slo": {"min_segment_size": 4}}`))
 	})
 	defer srv.UnsetOverride("/info")
-	c.QueryInfo()
+	_, _ = c.QueryInfo(ctx)
 
 	opts := swift.LargeObjectOpts{
 		Container:    CONTAINER,
@@ -2901,7 +3000,7 @@ func TestSLOMinChunkSize(t *testing.T) {
 	}
 
 	testSLOSegmentation(t, c, func() swift.LargeObjectFile {
-		out, err := c.StaticLargeObjectCreate(&opts)
+		out, err := c.StaticLargeObjectCreate(ctx, &opts)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2910,6 +3009,7 @@ func TestSLOMinChunkSize(t *testing.T) {
 }
 
 func TestSLOSegmentation(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	defer rollback()
 	opts := swift.LargeObjectOpts{
@@ -2921,7 +3021,7 @@ func TestSLOSegmentation(t *testing.T) {
 		NoBuffer:     true,
 	}
 	testSLOSegmentation(t, c, func() swift.LargeObjectFile {
-		out, err := c.StaticLargeObjectCreate(&opts)
+		out, err := c.StaticLargeObjectCreate(ctx, &opts)
 		if err != nil {
 			if err == swift.SLONotSupported {
 				t.Skip("SLO not supported")
@@ -2933,6 +3033,7 @@ func TestSLOSegmentation(t *testing.T) {
 }
 
 func TestSLOSegmentationBuffered(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithSegmentsContainer(t)
 	defer rollback()
 	opts := swift.LargeObjectOpts{
@@ -2943,7 +3044,7 @@ func TestSLOSegmentationBuffered(t *testing.T) {
 		MinChunkSize: 4,
 	}
 	testSegmentation(t, c, func() swift.LargeObjectFile {
-		out, err := c.StaticLargeObjectCreate(&opts)
+		out, err := c.StaticLargeObjectCreate(ctx, &opts)
 		if err != nil {
 			if err == swift.SLONotSupported {
 				t.Skip("SLO not supported")
@@ -3035,11 +3136,12 @@ type segmentTest struct {
 }
 
 func testSegmentation(t *testing.T, c *swift.Connection, createObj func() swift.LargeObjectFile, testCases []segmentTest) {
+	ctx := context.Background()
 	var err error
 	runTestCase := func(tCase segmentTest) {
 		out := createObj()
 		defer func() {
-			err = c.LargeObjectDelete(CONTAINER, OBJECT)
+			err = c.LargeObjectDelete(ctx, CONTAINER, OBJECT)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -3056,31 +3158,31 @@ func testSegmentation(t *testing.T, c *swift.Connection, createObj func() swift.
 				}
 			}
 		}
-		err = out.Close()
+		err = out.CloseWithContext(ctx)
 		if err != nil {
 			t.Error(err)
 		}
-		contents, err := c.ObjectGetString(CONTAINER, OBJECT)
+		contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Error(err)
 		}
 		if contents != tCase.expectedValue {
 			t.Errorf("Contents wrong, expected %q, got: %q", tCase.expectedValue, contents)
 		}
-		container, objects, err := c.LargeObjectGetSegments(CONTAINER, OBJECT)
+		container, objects, err := c.LargeObjectGetSegments(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Error(err)
 		}
 		if container != SEGMENTS_CONTAINER {
 			t.Errorf("Segments container wrong, expected %q, got: %q", SEGMENTS_CONTAINER, container)
 		}
-		_, headers, err := c.Object(CONTAINER, OBJECT)
+		_, headers, err := c.Object(ctx, CONTAINER, OBJECT)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if headers.IsLargeObjectSLO() {
 			var info swift.SwiftInfo
-			info, err = c.QueryInfo()
+			info, err = c.QueryInfo(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -3092,7 +3194,7 @@ func testSegmentation(t *testing.T, c *swift.Connection, createObj func() swift.
 		var segContents []string
 		for _, obj := range objects {
 			var value string
-			value, err = c.ObjectGetString(SEGMENTS_CONTAINER, obj.Name)
+			value, err = c.ObjectGetString(ctx, SEGMENTS_CONTAINER, obj.Name)
 			if err != nil {
 				t.Error(err)
 			}
@@ -3108,23 +3210,25 @@ func testSegmentation(t *testing.T, c *swift.Connection, createObj func() swift.
 }
 
 func TestContainerDelete(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	err := c.ContainerDelete(CONTAINER)
+	err := c.ContainerDelete(ctx, CONTAINER)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.ContainerDelete(CONTAINER)
+	err = c.ContainerDelete(ctx, CONTAINER)
 	if err != swift.ContainerNotFound {
 		t.Fatal("Expecting container not found", err)
 	}
-	_, _, err = c.Container(CONTAINER)
+	_, _, err = c.Container(ctx, CONTAINER)
 	if err != swift.ContainerNotFound {
 		t.Fatal("Expecting container not found", err)
 	}
 }
 
 func TestUnAuthenticate(t *testing.T) {
+	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
 	defer rollback()
 	c.UnAuthenticate()
@@ -3132,7 +3236,7 @@ func TestUnAuthenticate(t *testing.T) {
 		t.Fatal("Shouldn't be authenticated")
 	}
 	// Test re-authenticate
-	err := c.Authenticate()
+	err := c.Authenticate(ctx)
 	if err != nil {
 		t.Fatal("ReAuth failed", err)
 	}
