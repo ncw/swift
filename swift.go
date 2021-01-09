@@ -3,6 +3,7 @@ package swift
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/sha1"
@@ -72,7 +73,7 @@ const (
 //	import (
 //		"appengine/urlfetch"
 //		"fmt"
-//		"github.com/ncw/swift"
+//		"github.com/ncw/swift/v2"
 //	)
 //
 //	func handler(w http.ResponseWriter, r *http.Request) {
@@ -457,19 +458,19 @@ func (c *Connection) setDefaults() {
 //
 // If you don't call it before calling one of the connection methods
 // then it will be called for you on the first access.
-func (c *Connection) Authenticate() (err error) {
+func (c *Connection) Authenticate(ctx context.Context) (err error) {
 	if c.authLock == nil {
 		c.authLock = &sync.Mutex{}
 	}
 	c.authLock.Lock()
 	defer c.authLock.Unlock()
-	return c.authenticate()
+	return c.authenticate(ctx)
 }
 
 // Internal implementation of Authenticate
 //
 // Call with authLock held
-func (c *Connection) authenticate() (err error) {
+func (c *Connection) authenticate(ctx context.Context) (err error) {
 	c.setDefaults()
 
 	// Flush the keepalives connection - if we are
@@ -486,7 +487,7 @@ func (c *Connection) authenticate() (err error) {
 	retries := 1
 again:
 	var req *http.Request
-	req, err = c.Auth.Request(c)
+	req, err = c.Auth.Request(ctx, c)
 	if err != nil {
 		return
 	}
@@ -514,7 +515,7 @@ again:
 			}
 			return
 		}
-		err = c.Auth.Response(resp)
+		err = c.Auth.Response(ctx, resp)
 		if err != nil {
 			return
 		}
@@ -541,12 +542,12 @@ again:
 // Get an authToken and url
 //
 // The Url may be updated if it needed to authenticate using the OnReAuth function
-func (c *Connection) getUrlAndAuthToken(targetUrlIn string, OnReAuth func() (string, error)) (targetUrlOut, authToken string, err error) {
+func (c *Connection) getUrlAndAuthToken(ctx context.Context, targetUrlIn string, OnReAuth func() (string, error)) (targetUrlOut, authToken string, err error) {
 	c.authLock.Lock()
 	defer c.authLock.Unlock()
 	targetUrlOut = targetUrlIn
 	if !c.authenticated() {
-		err = c.authenticate()
+		err = c.authenticate(ctx)
 		if err != nil {
 			return
 		}
@@ -629,13 +630,17 @@ func (i SwiftInfo) SLOMinSegmentSize() int64 {
 }
 
 // Discover Swift configuration by doing a request against /info
-func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
+func (c *Connection) QueryInfo(ctx context.Context) (infos SwiftInfo, err error) {
 	infoUrl, err := url.Parse(c.StorageUrl)
 	if err != nil {
 		return nil, err
 	}
 	infoUrl.Path = path.Join(infoUrl.Path, "..", "..", "info")
-	resp, err := c.client.Get(infoUrl.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, infoUrl.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.client.Do(req)
 	if err == nil {
 		if resp.StatusCode != http.StatusOK {
 			drainAndClose(resp.Body, nil)
@@ -652,12 +657,12 @@ func (c *Connection) QueryInfo() (infos SwiftInfo, err error) {
 	return nil, err
 }
 
-func (c *Connection) cachedQueryInfo() (infos SwiftInfo, err error) {
+func (c *Connection) cachedQueryInfo(ctx context.Context) (infos SwiftInfo, err error) {
 	c.authLock.Lock()
 	infos = c.swiftInfo
 	c.authLock.Unlock()
 	if infos == nil {
-		infos, err = c.QueryInfo()
+		infos, err = c.QueryInfo(ctx)
 		if err != nil {
 			return
 		}
@@ -700,7 +705,7 @@ type RequestOpts struct {
 // receives a 401 error which means the token has expired
 //
 // This method is exported so extensions can call it.
-func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response, headers Headers, err error) {
+func (c *Connection) Call(ctx context.Context, targetUrl string, p RequestOpts) (resp *http.Response, headers Headers, err error) {
 	c.authLock.Lock()
 	c.setDefaults()
 	c.authLock.Unlock()
@@ -711,7 +716,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 	var req *http.Request
 	for {
 		var authToken string
-		if targetUrl, authToken, err = c.getUrlAndAuthToken(targetUrl, p.OnReAuth); err != nil {
+		if targetUrl, authToken, err = c.getUrlAndAuthToken(ctx, targetUrl, p.OnReAuth); err != nil {
 			return //authentication failure
 		}
 		var URL *url.URL
@@ -734,7 +739,7 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 		if reader != nil {
 			reader = newWatchdogReader(reader, c.Timeout, timer)
 		}
-		req, err = http.NewRequest(p.Operation, URL.String(), reader)
+		req, err = http.NewRequestWithContext(ctx, p.Operation, URL.String(), reader)
 		if err != nil {
 			return
 		}
@@ -809,14 +814,14 @@ func (c *Connection) Call(targetUrl string, p RequestOpts) (resp *http.Response,
 //
 // This will Authenticate if necessary, and re-authenticate if it
 // receives a 401 error which means the token has expired
-func (c *Connection) storage(p RequestOpts) (resp *http.Response, headers Headers, err error) {
+func (c *Connection) storage(ctx context.Context, p RequestOpts) (resp *http.Response, headers Headers, err error) {
 	p.OnReAuth = func() (string, error) {
 		return c.StorageUrl, nil
 	}
 	c.authLock.Lock()
 	url := c.StorageUrl
 	c.authLock.Unlock()
-	return c.Call(url, p)
+	return c.Call(ctx, url, p)
 }
 
 // readLines reads the response into an array of strings.
@@ -887,9 +892,9 @@ func (opts *ContainersOpts) parse() (url.Values, Headers) {
 }
 
 // ContainerNames returns a slice of names of containers in this account.
-func (c *Connection) ContainerNames(opts *ContainersOpts) ([]string, error) {
+func (c *Connection) ContainerNames(ctx context.Context, opts *ContainersOpts) ([]string, error) {
 	v, h := opts.parse()
-	resp, _, err := c.storage(RequestOpts{
+	resp, _, err := c.storage(ctx, RequestOpts{
 		Operation:  "GET",
 		Parameters: v,
 		ErrorMap:   ContainerErrorMap,
@@ -911,10 +916,10 @@ type Container struct {
 
 // Containers returns a slice of structures with full information as
 // described in Container.
-func (c *Connection) Containers(opts *ContainersOpts) ([]Container, error) {
+func (c *Connection) Containers(ctx context.Context, opts *ContainersOpts) ([]Container, error) {
 	v, h := opts.parse()
 	v.Set("format", "json")
-	resp, _, err := c.storage(RequestOpts{
+	resp, _, err := c.storage(ctx, RequestOpts{
 		Operation:  "GET",
 		Parameters: v,
 		ErrorMap:   ContainerErrorMap,
@@ -947,11 +952,11 @@ func containersAllOpts(opts *ContainersOpts) *ContainersOpts {
 // It calls Containers multiple times using the Marker parameter
 //
 // It has a default Limit parameter but you may pass in your own
-func (c *Connection) ContainersAll(opts *ContainersOpts) ([]Container, error) {
+func (c *Connection) ContainersAll(ctx context.Context, opts *ContainersOpts) ([]Container, error) {
 	opts = containersAllOpts(opts)
 	containers := make([]Container, 0)
 	for {
-		newContainers, err := c.Containers(opts)
+		newContainers, err := c.Containers(ctx, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -969,11 +974,11 @@ func (c *Connection) ContainersAll(opts *ContainersOpts) ([]Container, error) {
 // It calls ContainerNames multiple times using the Marker parameter
 //
 // It has a default Limit parameter but you may pass in your own
-func (c *Connection) ContainerNamesAll(opts *ContainersOpts) ([]string, error) {
+func (c *Connection) ContainerNamesAll(ctx context.Context, opts *ContainersOpts) ([]string, error) {
 	opts = containersAllOpts(opts)
 	containers := make([]string, 0)
 	for {
-		newContainers, err := c.ContainerNames(opts)
+		newContainers, err := c.ContainerNames(ctx, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -1029,9 +1034,9 @@ func (opts *ObjectsOpts) parse() (url.Values, Headers) {
 }
 
 // ObjectNames returns a slice of names of objects in a given container.
-func (c *Connection) ObjectNames(container string, opts *ObjectsOpts) ([]string, error) {
+func (c *Connection) ObjectNames(ctx context.Context, container string, opts *ObjectsOpts) ([]string, error) {
 	v, h := opts.parse()
-	resp, _, err := c.storage(RequestOpts{
+	resp, _, err := c.storage(ctx, RequestOpts{
 		Container:  container,
 		Operation:  "GET",
 		Parameters: v,
@@ -1065,10 +1070,10 @@ type Object struct {
 // with ContentType 'application/directory'.  These are not real
 // objects but represent directories of objects which haven't had an
 // object created for them.
-func (c *Connection) Objects(container string, opts *ObjectsOpts) ([]Object, error) {
+func (c *Connection) Objects(ctx context.Context, container string, opts *ObjectsOpts) ([]Object, error) {
 	v, h := opts.parse()
 	v.Set("format", "json")
-	resp, _, err := c.storage(RequestOpts{
+	resp, _, err := c.storage(ctx, RequestOpts{
 		Container:  container,
 		Operation:  "GET",
 		Parameters: v,
@@ -1130,10 +1135,10 @@ func objectsAllOpts(opts *ObjectsOpts, Limit int) *ObjectsOpts {
 
 // A closure defined by the caller to iterate through all objects
 //
-// Call Objects or ObjectNames from here with the *ObjectOpts passed in
+// Call Objects or ObjectNames from here with the context.Context and *ObjectOpts passed in
 //
 // Do whatever is required with the results then return them
-type ObjectsWalkFn func(*ObjectsOpts) (interface{}, error)
+type ObjectsWalkFn func(context.Context, *ObjectsOpts) (interface{}, error)
 
 // ObjectsWalk is uses to iterate through all the objects in chunks as
 // returned by Objects or ObjectNames using the Marker and Limit
@@ -1145,10 +1150,10 @@ type ObjectsWalkFn func(*ObjectsOpts) (interface{}, error)
 // Errors will be returned from this function
 //
 // It has a default Limit parameter but you may pass in your own
-func (c *Connection) ObjectsWalk(container string, opts *ObjectsOpts, walkFn ObjectsWalkFn) error {
+func (c *Connection) ObjectsWalk(ctx context.Context, container string, opts *ObjectsOpts, walkFn ObjectsWalkFn) error {
 	opts = objectsAllOpts(opts, allObjectsChanLimit)
 	for {
-		objects, err := walkFn(opts)
+		objects, err := walkFn(ctx, opts)
 		if err != nil {
 			return err
 		}
@@ -1179,10 +1184,10 @@ func (c *Connection) ObjectsWalk(container string, opts *ObjectsOpts, walkFn Obj
 // ObjectsAll is like Objects but it returns an unlimited number of Objects in a slice
 //
 // It calls Objects multiple times using the Marker parameter
-func (c *Connection) ObjectsAll(container string, opts *ObjectsOpts) ([]Object, error) {
+func (c *Connection) ObjectsAll(ctx context.Context, container string, opts *ObjectsOpts) ([]Object, error) {
 	objects := make([]Object, 0)
-	err := c.ObjectsWalk(container, opts, func(opts *ObjectsOpts) (interface{}, error) {
-		newObjects, err := c.Objects(container, opts)
+	err := c.ObjectsWalk(ctx, container, opts, func(ctx context.Context, opts *ObjectsOpts) (interface{}, error) {
+		newObjects, err := c.Objects(ctx, container, opts)
 		if err == nil {
 			objects = append(objects, newObjects...)
 		}
@@ -1197,10 +1202,10 @@ func (c *Connection) ObjectsAll(container string, opts *ObjectsOpts) ([]Object, 
 // reset unless KeepMarker is set
 //
 // It has a default Limit parameter but you may pass in your own
-func (c *Connection) ObjectNamesAll(container string, opts *ObjectsOpts) ([]string, error) {
+func (c *Connection) ObjectNamesAll(ctx context.Context, container string, opts *ObjectsOpts) ([]string, error) {
 	objects := make([]string, 0)
-	err := c.ObjectsWalk(container, opts, func(opts *ObjectsOpts) (interface{}, error) {
-		newObjects, err := c.ObjectNames(container, opts)
+	err := c.ObjectsWalk(ctx, container, opts, func(ctx context.Context, opts *ObjectsOpts) (interface{}, error) {
+		newObjects, err := c.ObjectNames(ctx, container, opts)
 		if err == nil {
 			objects = append(objects, newObjects...)
 		}
@@ -1227,9 +1232,9 @@ func getInt64FromHeader(resp *http.Response, header string) (result int64, err e
 }
 
 // Account returns info about the account in an Account struct.
-func (c *Connection) Account() (info Account, headers Headers, err error) {
+func (c *Connection) Account(ctx context.Context) (info Account, headers Headers, err error) {
 	var resp *http.Response
-	resp, headers, err = c.storage(RequestOpts{
+	resp, headers, err = c.storage(ctx, RequestOpts{
 		Operation:  "HEAD",
 		ErrorMap:   ContainerErrorMap,
 		NoResponse: true,
@@ -1262,8 +1267,8 @@ func (c *Connection) Account() (info Account, headers Headers, err error) {
 // Add or update keys by mentioning them in the Headers.
 //
 // Remove keys by setting them to an empty string.
-func (c *Connection) AccountUpdate(h Headers) error {
-	_, _, err := c.storage(RequestOpts{
+func (c *Connection) AccountUpdate(ctx context.Context, h Headers) error {
+	_, _, err := c.storage(ctx, RequestOpts{
 		Operation:  "POST",
 		ErrorMap:   ContainerErrorMap,
 		NoResponse: true,
@@ -1277,8 +1282,8 @@ func (c *Connection) AccountUpdate(h Headers) error {
 // If you don't want to add Headers just pass in nil
 //
 // No error is returned if it already exists but the metadata if any will be updated.
-func (c *Connection) ContainerCreate(container string, h Headers) error {
-	_, _, err := c.storage(RequestOpts{
+func (c *Connection) ContainerCreate(ctx context.Context, container string, h Headers) error {
+	_, _, err := c.storage(ctx, RequestOpts{
 		Container:  container,
 		Operation:  "PUT",
 		ErrorMap:   ContainerErrorMap,
@@ -1291,8 +1296,8 @@ func (c *Connection) ContainerCreate(container string, h Headers) error {
 // ContainerDelete deletes a container.
 //
 // May return ContainerDoesNotExist or ContainerNotEmpty
-func (c *Connection) ContainerDelete(container string) error {
-	_, _, err := c.storage(RequestOpts{
+func (c *Connection) ContainerDelete(ctx context.Context, container string) error {
+	_, _, err := c.storage(ctx, RequestOpts{
 		Container:  container,
 		Operation:  "DELETE",
 		ErrorMap:   ContainerErrorMap,
@@ -1303,9 +1308,9 @@ func (c *Connection) ContainerDelete(container string) error {
 
 // Container returns info about a single container including any
 // metadata in the headers.
-func (c *Connection) Container(container string) (info Container, headers Headers, err error) {
+func (c *Connection) Container(ctx context.Context, container string) (info Container, headers Headers, err error) {
 	var resp *http.Response
-	resp, headers, err = c.storage(RequestOpts{
+	resp, headers, err = c.storage(ctx, RequestOpts{
 		Container:  container,
 		Operation:  "HEAD",
 		ErrorMap:   ContainerErrorMap,
@@ -1332,8 +1337,8 @@ func (c *Connection) Container(container string) (info Container, headers Header
 // Remove keys by setting them to an empty string.
 //
 // Container metadata can only be read with Container() not with Containers().
-func (c *Connection) ContainerUpdate(container string, h Headers) error {
-	_, _, err := c.storage(RequestOpts{
+func (c *Connection) ContainerUpdate(ctx context.Context, container string, h Headers) error {
+	_, _, err := c.storage(ctx, RequestOpts{
 		Container:  container,
 		Operation:  "POST",
 		ErrorMap:   ContainerErrorMap,
@@ -1469,7 +1474,7 @@ func objectPutHeaders(objectName string, checkHash *bool, Hash string, contentTy
 //
 // If contentType is set it will be used, otherwise one will be
 // guessed from objectName using mime.TypeByExtension
-func (c *Connection) ObjectCreate(container string, objectName string, checkHash bool, Hash string, contentType string, h Headers) (file *ObjectCreateFile, err error) {
+func (c *Connection) ObjectCreate(ctx context.Context, container string, objectName string, checkHash bool, Hash string, contentType string, h Headers) (file *ObjectCreateFile, err error) {
 	extraHeaders := objectPutHeaders(objectName, &checkHash, Hash, contentType, h)
 	pipeReader, pipeWriter := io.Pipe()
 	file = &ObjectCreateFile{
@@ -1490,7 +1495,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 			NoResponse: true,
 			ErrorMap:   objectErrorMap,
 		}
-		file.resp, file.headers, file.err = c.storage(opts)
+		file.resp, file.headers, file.err = c.storage(ctx, opts)
 		// Signal finished
 		pipeReader.Close()
 		close(file.done)
@@ -1498,7 +1503,7 @@ func (c *Connection) ObjectCreate(container string, objectName string, checkHash
 	return
 }
 
-func (c *Connection) ObjectSymlinkCreate(container string, symlink string, targetAccount string, targetContainer string, targetObject string, targetEtag string) (headers Headers, err error) {
+func (c *Connection) ObjectSymlinkCreate(ctx context.Context, container string, symlink string, targetAccount string, targetContainer string, targetObject string, targetEtag string) (headers Headers, err error) {
 
 	EMPTY_MD5 := "d41d8cd98f00b204e9800998ecf8427e"
 	symHeaders := Headers{}
@@ -1510,18 +1515,18 @@ func (c *Connection) ObjectSymlinkCreate(container string, symlink string, targe
 		symHeaders["X-Symlink-Target-Etag"] = targetEtag
 	}
 	symHeaders["X-Symlink-Target"] = fmt.Sprintf("%s/%s", targetContainer, targetObject)
-	_, err = c.ObjectPut(container, symlink, contents, true, EMPTY_MD5, "application/symlink", symHeaders)
+	_, err = c.ObjectPut(ctx, container, symlink, contents, true, EMPTY_MD5, "application/symlink", symHeaders)
 	return
 }
 
-func (c *Connection) objectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers, parameters url.Values) (headers Headers, err error) {
+func (c *Connection) objectPut(ctx context.Context, container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers, parameters url.Values) (headers Headers, err error) {
 	extraHeaders := objectPutHeaders(objectName, &checkHash, Hash, contentType, h)
 	hash := md5.New()
 	var body io.Reader = contents
 	if checkHash {
 		body = io.TeeReader(contents, hash)
 	}
-	_, headers, err = c.storage(RequestOpts{
+	_, headers, err = c.storage(ctx, RequestOpts{
 		Container:  container,
 		ObjectName: objectName,
 		Operation:  "PUT",
@@ -1566,27 +1571,27 @@ func (c *Connection) objectPut(container string, objectName string, contents io.
 //
 // If contentType is set it will be used, otherwise one will be
 // guessed from objectName using mime.TypeByExtension
-func (c *Connection) ObjectPut(container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers) (headers Headers, err error) {
-	return c.objectPut(container, objectName, contents, checkHash, Hash, contentType, h, nil)
+func (c *Connection) ObjectPut(ctx context.Context, container string, objectName string, contents io.Reader, checkHash bool, Hash string, contentType string, h Headers) (headers Headers, err error) {
+	return c.objectPut(ctx, container, objectName, contents, checkHash, Hash, contentType, h, nil)
 }
 
 // ObjectPutBytes creates an object from a []byte in a container.
 //
 // This is a simplified interface which checks the MD5.
-func (c *Connection) ObjectPutBytes(container string, objectName string, contents []byte, contentType string) (err error) {
+func (c *Connection) ObjectPutBytes(ctx context.Context, container string, objectName string, contents []byte, contentType string) (err error) {
 	buf := bytes.NewBuffer(contents)
 	h := Headers{"Content-Length": strconv.Itoa(len(contents))}
-	_, err = c.ObjectPut(container, objectName, buf, true, "", contentType, h)
+	_, err = c.ObjectPut(ctx, container, objectName, buf, true, "", contentType, h)
 	return
 }
 
 // ObjectPutString creates an object from a string in a container.
 //
 // This is a simplified interface which checks the MD5
-func (c *Connection) ObjectPutString(container string, objectName string, contents string, contentType string) (err error) {
+func (c *Connection) ObjectPutString(ctx context.Context, container string, objectName string, contents string, contentType string) (err error) {
 	buf := strings.NewReader(contents)
 	h := Headers{"Content-Length": strconv.Itoa(len(contents))}
-	_, err = c.ObjectPut(container, objectName, buf, true, "", contentType, h)
+	_, err = c.ObjectPut(ctx, container, objectName, buf, true, "", contentType, h)
 	return
 }
 
@@ -1636,7 +1641,7 @@ func (file *ObjectOpenFile) Read(p []byte) (n int, err error) {
 // unlike os.File
 //
 // Seek(0, 1) will return the current file pointer.
-func (file *ObjectOpenFile) Seek(offset int64, whence int) (newPos int64, err error) {
+func (file *ObjectOpenFile) Seek(ctx context.Context, offset int64, whence int) (newPos int64, err error) {
 	file.overSeeked = false
 	switch whence {
 	case 0: // relative to start
@@ -1674,7 +1679,7 @@ func (file *ObjectOpenFile) Seek(offset int64, whence int) (newPos int64, err er
 	} else {
 		delete(file.headers, "Range")
 	}
-	newFile, _, err := file.connection.ObjectOpen(file.container, file.objectName, false, file.headers)
+	newFile, _, err := file.connection.ObjectOpen(ctx, file.container, file.objectName, false, file.headers)
 	if err != nil {
 		return
 	}
@@ -1688,9 +1693,9 @@ func (file *ObjectOpenFile) Seek(offset int64, whence int) (newPos int64, err er
 
 // Length gets the objects content length either from a cached copy or
 // from the server.
-func (file *ObjectOpenFile) Length() (int64, error) {
+func (file *ObjectOpenFile) Length(ctx context.Context) (int64, error) {
 	if !file.lengthOk {
-		info, _, err := file.connection.Object(file.container, file.objectName)
+		info, _, err := file.connection.Object(ctx, file.container, file.objectName)
 		file.length = info.Bytes
 		file.lengthOk = (err == nil)
 		return file.length, err
@@ -1727,11 +1732,7 @@ func (file *ObjectOpenFile) Close() (err error) {
 	return
 }
 
-// Check it satisfies the interfaces
-var _ io.ReadCloser = &ObjectOpenFile{}
-var _ io.Seeker = &ObjectOpenFile{}
-
-func (c *Connection) objectOpenBase(container string, objectName string, checkHash bool, h Headers, parameters url.Values) (file *ObjectOpenFile, headers Headers, err error) {
+func (c *Connection) objectOpenBase(ctx context.Context, container string, objectName string, checkHash bool, h Headers, parameters url.Values) (file *ObjectOpenFile, headers Headers, err error) {
 	var resp *http.Response
 	opts := RequestOpts{
 		Container:  container,
@@ -1741,7 +1742,7 @@ func (c *Connection) objectOpenBase(container string, objectName string, checkHa
 		Headers:    h,
 		Parameters: parameters,
 	}
-	resp, headers, err = c.storage(opts)
+	resp, headers, err = c.storage(ctx, opts)
 	if err != nil {
 		return
 	}
@@ -1771,9 +1772,9 @@ func (c *Connection) objectOpenBase(container string, objectName string, checkHa
 	return
 }
 
-func (c *Connection) objectOpen(container string, objectName string, checkHash bool, h Headers, parameters url.Values) (file *ObjectOpenFile, headers Headers, err error) {
+func (c *Connection) objectOpen(ctx context.Context, container string, objectName string, checkHash bool, h Headers, parameters url.Values) (file *ObjectOpenFile, headers Headers, err error) {
 	err = withLORetry(0, func() (Headers, int64, error) {
-		file, headers, err = c.objectOpenBase(container, objectName, checkHash, h, parameters)
+		file, headers, err = c.objectOpenBase(ctx, container, objectName, checkHash, h, parameters)
 		if err != nil {
 			return headers, 0, err
 		}
@@ -1805,8 +1806,8 @@ func (c *Connection) objectOpen(container string, objectName string, checkHash b
 // you will need to download everything in the manifest separately.
 //
 // headers["Content-Type"] will give the content type if desired.
-func (c *Connection) ObjectOpen(container string, objectName string, checkHash bool, h Headers) (file *ObjectOpenFile, headers Headers, err error) {
-	return c.objectOpen(container, objectName, checkHash, h, nil)
+func (c *Connection) ObjectOpen(ctx context.Context, container string, objectName string, checkHash bool, h Headers) (file *ObjectOpenFile, headers Headers, err error) {
+	return c.objectOpen(ctx, container, objectName, checkHash, h, nil)
 }
 
 // ObjectGet gets the object into the io.Writer contents.
@@ -1818,8 +1819,8 @@ func (c *Connection) ObjectOpen(container string, objectName string, checkHash b
 // server.  If it is wrong then it will return ObjectCorrupted.
 //
 // headers["Content-Type"] will give the content type if desired.
-func (c *Connection) ObjectGet(container string, objectName string, contents io.Writer, checkHash bool, h Headers) (headers Headers, err error) {
-	file, headers, err := c.ObjectOpen(container, objectName, checkHash, h)
+func (c *Connection) ObjectGet(ctx context.Context, container string, objectName string, contents io.Writer, checkHash bool, h Headers) (headers Headers, err error) {
+	file, headers, err := c.ObjectOpen(ctx, container, objectName, checkHash, h)
 	if err != nil {
 		return
 	}
@@ -1831,9 +1832,9 @@ func (c *Connection) ObjectGet(container string, objectName string, contents io.
 // ObjectGetBytes returns an object as a []byte.
 //
 // This is a simplified interface which checks the MD5
-func (c *Connection) ObjectGetBytes(container string, objectName string) (contents []byte, err error) {
+func (c *Connection) ObjectGetBytes(ctx context.Context, container string, objectName string) (contents []byte, err error) {
 	var buf bytes.Buffer
-	_, err = c.ObjectGet(container, objectName, &buf, true, nil)
+	_, err = c.ObjectGet(ctx, container, objectName, &buf, true, nil)
 	contents = buf.Bytes()
 	return
 }
@@ -1841,9 +1842,9 @@ func (c *Connection) ObjectGetBytes(container string, objectName string) (conten
 // ObjectGetString returns an object as a string.
 //
 // This is a simplified interface which checks the MD5
-func (c *Connection) ObjectGetString(container string, objectName string) (contents string, err error) {
+func (c *Connection) ObjectGetString(ctx context.Context, container string, objectName string) (contents string, err error) {
 	var buf bytes.Buffer
-	_, err = c.ObjectGet(container, objectName, &buf, true, nil)
+	_, err = c.ObjectGet(ctx, container, objectName, &buf, true, nil)
 	contents = buf.String()
 	return
 }
@@ -1851,8 +1852,8 @@ func (c *Connection) ObjectGetString(container string, objectName string) (conte
 // ObjectDelete deletes the object.
 //
 // May return ObjectNotFound if the object isn't found
-func (c *Connection) ObjectDelete(container string, objectName string) error {
-	_, _, err := c.storage(RequestOpts{
+func (c *Connection) ObjectDelete(ctx context.Context, container string, objectName string) error {
+	_, _, err := c.storage(ctx, RequestOpts{
 		Container:  container,
 		ObjectName: objectName,
 		Operation:  "DELETE",
@@ -1909,7 +1910,7 @@ type BulkDeleteResult struct {
 	Headers        Headers          // Response HTTP headers.
 }
 
-func (c *Connection) doBulkDelete(objects []string, h Headers) (result BulkDeleteResult, err error) {
+func (c *Connection) doBulkDelete(ctx context.Context, objects []string, h Headers) (result BulkDeleteResult, err error) {
 	var buffer bytes.Buffer
 	for _, s := range objects {
 		u := url.URL{Path: s}
@@ -1923,7 +1924,7 @@ func (c *Connection) doBulkDelete(objects []string, h Headers) (result BulkDelet
 	for key, value := range h {
 		extraHeaders[key] = value
 	}
-	resp, headers, err := c.storage(RequestOpts{
+	resp, headers, err := c.storage(ctx, RequestOpts{
 		Operation:  "DELETE",
 		Parameters: url.Values{"bulk-delete": []string{"1"}},
 		Headers:    extraHeaders,
@@ -1967,8 +1968,8 @@ func (c *Connection) doBulkDelete(objects []string, h Headers) (result BulkDelet
 // See also:
 // * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-bulk-delete.html
 // * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Bulk_Delete-d1e2338.html
-func (c *Connection) BulkDelete(container string, objectNames []string) (result BulkDeleteResult, err error) {
-	return c.BulkDeleteHeaders(container, objectNames, nil)
+func (c *Connection) BulkDelete(ctx context.Context, container string, objectNames []string) (result BulkDeleteResult, err error) {
+	return c.BulkDeleteHeaders(ctx, container, objectNames, nil)
 }
 
 // BulkDeleteHeaders deletes multiple objectNames from container in one operation.
@@ -1979,7 +1980,7 @@ func (c *Connection) BulkDelete(container string, objectNames []string) (result 
 // See also:
 // * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-bulk-delete.html
 // * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Bulk_Delete-d1e2338.html
-func (c *Connection) BulkDeleteHeaders(container string, objectNames []string, h Headers) (result BulkDeleteResult, err error) {
+func (c *Connection) BulkDeleteHeaders(ctx context.Context, container string, objectNames []string, h Headers) (result BulkDeleteResult, err error) {
 	if len(objectNames) == 0 {
 		result.Errors = make(map[string]error)
 		return
@@ -1988,7 +1989,7 @@ func (c *Connection) BulkDeleteHeaders(container string, objectNames []string, h
 	for i, name := range objectNames {
 		fullPaths[i] = fmt.Sprintf("/%s/%s", container, name)
 	}
-	return c.doBulkDelete(fullPaths, h)
+	return c.doBulkDelete(ctx, fullPaths, h)
 }
 
 // BulkUploadResult stores results of BulkUpload().
@@ -2021,14 +2022,14 @@ type BulkUploadResult struct {
 // See also:
 // * http://docs.openstack.org/trunk/openstack-object-storage/admin/content/object-storage-extract-archive.html
 // * http://docs.rackspace.com/files/api/v1/cf-devguide/content/Extract_Archive-d1e2338.html
-func (c *Connection) BulkUpload(uploadPath string, dataStream io.Reader, format string, h Headers) (result BulkUploadResult, err error) {
+func (c *Connection) BulkUpload(ctx context.Context, uploadPath string, dataStream io.Reader, format string, h Headers) (result BulkUploadResult, err error) {
 	extraHeaders := Headers{"Accept": "application/json"}
 	for key, value := range h {
 		extraHeaders[key] = value
 	}
 	// The following code abuses Container parameter intentionally.
 	// The best fix might be to rename Container to UploadPath.
-	resp, headers, err := c.storage(RequestOpts{
+	resp, headers, err := c.storage(ctx, RequestOpts{
 		Container:  uploadPath,
 		Operation:  "PUT",
 		Parameters: url.Values{"extract-archive": []string{format}},
@@ -2073,9 +2074,9 @@ func (c *Connection) BulkUpload(uploadPath string, dataStream io.Reader, format 
 // May return ObjectNotFound.
 //
 // Use headers.ObjectMetadata() to read the metadata in the Headers.
-func (c *Connection) Object(container string, objectName string) (info Object, headers Headers, err error) {
+func (c *Connection) Object(ctx context.Context, container string, objectName string) (info Object, headers Headers, err error) {
 	err = withLORetry(0, func() (Headers, int64, error) {
-		info, headers, err = c.objectBase(container, objectName)
+		info, headers, err = c.objectBase(ctx, container, objectName)
 		if err != nil {
 			return headers, 0, err
 		}
@@ -2084,9 +2085,9 @@ func (c *Connection) Object(container string, objectName string) (info Object, h
 	return
 }
 
-func (c *Connection) objectBase(container string, objectName string) (info Object, headers Headers, err error) {
+func (c *Connection) objectBase(ctx context.Context, container string, objectName string) (info Object, headers Headers, err error) {
 	var resp *http.Response
-	resp, headers, err = c.storage(RequestOpts{
+	resp, headers, err = c.storage(ctx, RequestOpts{
 		Container:  container,
 		ObjectName: objectName,
 		Operation:  "HEAD",
@@ -2156,8 +2157,8 @@ func (c *Connection) objectBase(container string, objectName string) (info Objec
 // other headers such as Content-Type or CORS headers.
 //
 // May return ObjectNotFound.
-func (c *Connection) ObjectUpdate(container string, objectName string, h Headers) error {
-	_, _, err := c.storage(RequestOpts{
+func (c *Connection) ObjectUpdate(ctx context.Context, container string, objectName string, h Headers) error {
+	_, _, err := c.storage(ctx, RequestOpts{
 		Container:  container,
 		ObjectName: objectName,
 		Operation:  "POST",
@@ -2186,7 +2187,7 @@ func urlPathEscape(in string) string {
 //
 // You can use this to copy an object to itself - this is the only way
 // to update the content type of an object.
-func (c *Connection) ObjectCopy(srcContainer string, srcObjectName string, dstContainer string, dstObjectName string, h Headers) (headers Headers, err error) {
+func (c *Connection) ObjectCopy(ctx context.Context, srcContainer string, srcObjectName string, dstContainer string, dstObjectName string, h Headers) (headers Headers, err error) {
 	// Meta stuff
 	extraHeaders := map[string]string{
 		"Destination": urlPathEscape(dstContainer + "/" + dstObjectName),
@@ -2194,7 +2195,7 @@ func (c *Connection) ObjectCopy(srcContainer string, srcObjectName string, dstCo
 	for key, value := range h {
 		extraHeaders[key] = value
 	}
-	_, headers, err = c.storage(RequestOpts{
+	_, headers, err = c.storage(ctx, RequestOpts{
 		Container:  srcContainer,
 		ObjectName: srcObjectName,
 		Operation:  "COPY",
@@ -2212,12 +2213,12 @@ func (c *Connection) ObjectCopy(srcContainer string, srcObjectName string, dstCo
 // All metadata is preserved.
 //
 // The destination container must exist before the copy.
-func (c *Connection) ObjectMove(srcContainer string, srcObjectName string, dstContainer string, dstObjectName string) (err error) {
-	_, err = c.ObjectCopy(srcContainer, srcObjectName, dstContainer, dstObjectName, nil)
+func (c *Connection) ObjectMove(ctx context.Context, srcContainer string, srcObjectName string, dstContainer string, dstObjectName string) (err error) {
+	_, err = c.ObjectCopy(ctx, srcContainer, srcObjectName, dstContainer, dstObjectName, nil)
 	if err != nil {
 		return
 	}
-	return c.ObjectDelete(srcContainer, srcObjectName)
+	return c.ObjectDelete(ctx, srcContainer, srcObjectName)
 }
 
 // ObjectUpdateContentType updates the content type of an object
@@ -2225,9 +2226,9 @@ func (c *Connection) ObjectMove(srcContainer string, srcObjectName string, dstCo
 // This is a convenience method which calls ObjectCopy
 //
 // All other metadata is preserved.
-func (c *Connection) ObjectUpdateContentType(container string, objectName string, contentType string) (err error) {
+func (c *Connection) ObjectUpdateContentType(ctx context.Context, container string, objectName string, contentType string) (err error) {
 	h := Headers{"Content-Type": contentType}
-	_, err = c.ObjectCopy(container, objectName, container, objectName, h)
+	_, err = c.ObjectCopy(ctx, container, objectName, container, objectName, h)
 	return
 }
 
@@ -2239,14 +2240,14 @@ func (c *Connection) ObjectUpdateContentType(container string, objectName string
 //
 // If the server doesn't support versioning then it will return
 // Forbidden however it will have created both the containers at that point.
-func (c *Connection) VersionContainerCreate(current, version string) error {
-	if err := c.ContainerCreate(version, nil); err != nil {
+func (c *Connection) VersionContainerCreate(ctx context.Context, current, version string) error {
+	if err := c.ContainerCreate(ctx, version, nil); err != nil {
 		return err
 	}
-	if err := c.ContainerCreate(current, nil); err != nil {
+	if err := c.ContainerCreate(ctx, current, nil); err != nil {
 		return err
 	}
-	if err := c.VersionEnable(current, version); err != nil {
+	if err := c.VersionEnable(ctx, current, version); err != nil {
 		return err
 	}
 	return nil
@@ -2255,13 +2256,13 @@ func (c *Connection) VersionContainerCreate(current, version string) error {
 // VersionEnable enables versioning on the current container with version as the tracking container.
 //
 // May return Forbidden if this isn't supported by the server
-func (c *Connection) VersionEnable(current, version string) error {
+func (c *Connection) VersionEnable(ctx context.Context, current, version string) error {
 	h := Headers{"X-Versions-Location": version}
-	if err := c.ContainerUpdate(current, h); err != nil {
+	if err := c.ContainerUpdate(ctx, current, h); err != nil {
 		return err
 	}
 	// Check to see if the header was set properly
-	_, headers, err := c.Container(current)
+	_, headers, err := c.Container(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -2273,9 +2274,9 @@ func (c *Connection) VersionEnable(current, version string) error {
 }
 
 // VersionDisable disables versioning on the current container.
-func (c *Connection) VersionDisable(current string) error {
+func (c *Connection) VersionDisable(ctx context.Context, current string) error {
 	h := Headers{"X-Versions-Location": ""}
-	if err := c.ContainerUpdate(current, h); err != nil {
+	if err := c.ContainerUpdate(ctx, current, h); err != nil {
 		return err
 	}
 	return nil
@@ -2284,10 +2285,10 @@ func (c *Connection) VersionDisable(current string) error {
 // VersionObjectList returns a list of older versions of the object.
 //
 // Objects are returned in the format <length><object_name>/<timestamp>
-func (c *Connection) VersionObjectList(version, object string) ([]string, error) {
+func (c *Connection) VersionObjectList(ctx context.Context, version, object string) ([]string, error) {
 	opts := &ObjectsOpts{
 		// <3-character zero-padded hexadecimal character length><object name>/
 		Prefix: fmt.Sprintf("%03x", len(object)) + object + "/",
 	}
-	return c.ObjectNames(version, opts)
+	return c.ObjectNames(ctx, version, opts)
 }

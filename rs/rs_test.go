@@ -2,10 +2,11 @@
 package rs_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
-	"github.com/ncw/swift/rs"
+	"github.com/ncw/swift/v2/rs"
 )
 
 var (
@@ -32,7 +33,7 @@ func TestAuthenticate(t *testing.T) {
 	c.UserName = UserName
 	c.ApiKey = ApiKey
 	c.AuthUrl = AuthUrl
-	err := c.Authenticate()
+	err := c.Authenticate(context.Background())
 	if err != nil {
 		t.Fatal("Auth failed", err)
 	}
@@ -43,14 +44,14 @@ func TestAuthenticate(t *testing.T) {
 
 // Setup
 func TestContainerCreate(t *testing.T) {
-	err := c.ContainerCreate(CONTAINER, nil)
+	err := c.ContainerCreate(context.Background(), CONTAINER, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestCDNEnable(t *testing.T) {
-	headers, err := c.ContainerCDNEnable(CONTAINER, 0)
+	headers, err := c.ContainerCDNEnable(context.Background(), CONTAINER, 0)
 	if err != nil {
 		t.Error(err)
 	}
@@ -64,14 +65,14 @@ func TestOnReAuth(t *testing.T) {
 	c2.UserName = c.UserName
 	c2.ApiKey = c.ApiKey
 	c2.AuthUrl = c.AuthUrl
-	_, err := c2.ContainerCDNEnable(CONTAINER, 0)
+	_, err := c2.ContainerCDNEnable(context.Background(), CONTAINER, 0)
 	if err != nil {
 		t.Fatalf("Failed to reauthenticate: %v", err)
 	}
 }
 
 func TestCDNMeta(t *testing.T) {
-	headers, err := c.ContainerCDNMeta(CONTAINER)
+	headers, err := c.ContainerCDNMeta(context.Background(), CONTAINER)
 	if err != nil {
 		t.Error(err)
 	}
@@ -81,7 +82,7 @@ func TestCDNMeta(t *testing.T) {
 }
 
 func TestCDNDisable(t *testing.T) {
-	err := c.ContainerCDNDisable(CONTAINER) // files stick in CDN until TTL expires
+	err := c.ContainerCDNDisable(context.Background(), CONTAINER) // files stick in CDN until TTL expires
 	if err != nil {
 		t.Error(err)
 	}
@@ -89,7 +90,7 @@ func TestCDNDisable(t *testing.T) {
 
 // Teardown
 func TestContainerDelete(t *testing.T) {
-	err := c.ContainerDelete(CONTAINER)
+	err := c.ContainerDelete(context.Background(), CONTAINER)
 	if err != nil {
 		t.Fatal(err)
 	}
