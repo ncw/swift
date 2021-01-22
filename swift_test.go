@@ -41,6 +41,7 @@ var (
 	srv              *swifttest.SwiftServer
 	m1               = swift.Metadata{"Hello": "1", "potato-Salad": "2"}
 	m2               = swift.Metadata{"hello": "", "potato-salad": ""}
+	m3               = swift.Metadata{"sweet-potato-salad": "1"}
 	skipVersionTests = false
 )
 
@@ -1459,6 +1460,29 @@ func TestObjectUpdate2(t *testing.T) {
 	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "", "potato-salad": ""})
 }
 
+func TestObjectUpdate3(t *testing.T) {
+	c, rollback := makeConnectionWithObjectHeaders(t)
+	defer rollback()
+
+	// sanity
+	_, headers, err := c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "1", "potato-salad": "1"})
+
+	// update with new headers
+	err = c.ObjectUpdate(CONTAINER, OBJECT, m3.ObjectHeaders())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, headers, err = c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"sweet-potato-salad": "1"})
+}
+
 func TestContainers(t *testing.T) {
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
@@ -1767,10 +1791,14 @@ func TestObjectMove(t *testing.T) {
 func TestObjectUpdateContentType(t *testing.T) {
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
+
+	// to maintain backwards-compatibility update content-type with
+	// ObjectUpdateContentType, which copies object in place
 	err := c.ObjectUpdateContentType(CONTAINER, OBJECT, "text/potato")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Re-read the metadata to see if it is correct
 	_, headers, err := c.Object(CONTAINER, OBJECT)
 	if err != nil {
@@ -1779,7 +1807,27 @@ func TestObjectUpdateContentType(t *testing.T) {
 	if headers["Content-Type"] != "text/potato" {
 		t.Error("Didn't change content type")
 	}
+
+	// ObjectUpdateContentType keeps old metadata because copy was used
 	compareMaps(t, headers.ObjectMetadata(), map[string]string{"hello": "1", "potato-salad": "2"})
+
+	// Now update content-type with ObjectUpdate
+	// Note, old metadata is lost if not sent again
+	h := swift.Headers{"Content-Type": "text/sweet-potato", "X-Object-Meta-Sweet-Potato-Salad": "1"}
+	err = c.ObjectUpdate(CONTAINER, OBJECT, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-read the metadata to see if it is correct
+	_, headers, err = c.Object(CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headers["Content-Type"] != "text/sweet-potato" {
+		t.Error("Didn't change content type")
+	}
+	compareMaps(t, headers.ObjectMetadata(), map[string]string{"sweet-potato-salad": "1"})
 }
 
 func TestVersionContainerCreate(t *testing.T) {
