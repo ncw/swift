@@ -130,7 +130,8 @@ type Connection struct {
 	// swiftInfo is filled after QueryInfo is called
 	swiftInfo SwiftInfo
 	// Workarounds for non-compliant servers that don't always return opts.Limit items per page
-	FetchUntilEmptyPage bool // Always fetch unless we received an empty page
+	FetchUntilEmptyPage       bool // Always fetch unless we received an empty page
+	PartialPageFetchThreshold int  // Fetch if the current page is this percentage of opts.Limit
 }
 
 // setFromEnv reads the value that param points to (it must be a
@@ -952,6 +953,11 @@ func containersAllOpts(opts *ContainersOpts) *ContainersOpts {
 func (c *Connection) isLastPage(length int, limit int) bool {
 	if c.FetchUntilEmptyPage && length > 0 {
 		return false
+	}
+	if c.PartialPageFetchThreshold > 0 && limit > 0 {
+		if length*100/limit >= c.PartialPageFetchThreshold {
+			return false
+		}
 	}
 	if length < limit {
 		return true
