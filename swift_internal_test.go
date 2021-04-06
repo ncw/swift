@@ -708,6 +708,46 @@ func TestFetchUntilEmptyPageWorkaround(t *testing.T) {
 	})
 }
 
+func TestPartialPageFetchThreshold(t *testing.T) {
+	conn := &Connection{
+		PartialPageFetchThreshold: 90,
+	}
+	testPaging(t, conn, []pagingTest{
+		{
+			length:   0,
+			limit:    1000,
+			expected: true,
+		},
+		{
+			length:   850,
+			limit:    1000,
+			expected: true,
+		},
+		{
+			length:   950,
+			limit:    1000,
+			expected: false,
+		},
+		{
+			length:   1000,
+			limit:    1000,
+			expected: false,
+		},
+		// For completeness
+		{
+			length:   0,
+			limit:    0,
+			expected: false,
+		},
+		{
+			length:   2000,
+			limit:    1000,
+			expected: false,
+		},
+	})
+
+}
+
 type pagingTest struct {
 	length   int
 	limit    int
