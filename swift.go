@@ -129,6 +129,8 @@ type Connection struct {
 	authLock   *sync.Mutex   // lock when R/W StorageUrl, AuthToken, Auth
 	// swiftInfo is filled after QueryInfo is called
 	swiftInfo SwiftInfo
+	// Workarounds for non-compliant servers that don't always return opts.Limit items per page
+	FetchUntilEmptyPage bool // Always fetch unless we received an empty page
 }
 
 // setFromEnv reads the value that param points to (it must be a
@@ -948,6 +950,9 @@ func containersAllOpts(opts *ContainersOpts) *ContainersOpts {
 }
 
 func (c *Connection) isLastPage(length int, limit int) bool {
+	if c.FetchUntilEmptyPage && length > 0 {
+		return false
+	}
 	if length < limit {
 		return true
 	}
