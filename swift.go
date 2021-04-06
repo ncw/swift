@@ -129,6 +129,9 @@ type Connection struct {
 	authLock   *sync.Mutex   // lock when R/W StorageUrl, AuthToken, Auth
 	// swiftInfo is filled after QueryInfo is called
 	swiftInfo SwiftInfo
+	// Workarounds for non-compliant servers that don't always return opts.Limit items per page
+	FetchUntilEmptyPage       bool // Always fetch unless we received an empty page
+	PartialPageFetchThreshold int  // Fetch if the current page is this percentage of opts.Limit
 }
 
 // setFromEnv reads the value that param points to (it must be a
@@ -947,6 +950,21 @@ func containersAllOpts(opts *ContainersOpts) *ContainersOpts {
 	return &newOpts
 }
 
+func (c *Connection) isLastPage(length int, limit int) bool {
+	if c.FetchUntilEmptyPage && length > 0 {
+		return false
+	}
+	if c.PartialPageFetchThreshold > 0 && limit > 0 {
+		if length*100/limit >= c.PartialPageFetchThreshold {
+			return false
+		}
+	}
+	if length < limit {
+		return true
+	}
+	return false
+}
+
 // ContainersAll is like Containers but it returns all the Containers
 //
 // It calls Containers multiple times using the Marker parameter
@@ -961,7 +979,7 @@ func (c *Connection) ContainersAll(ctx context.Context, opts *ContainersOpts) ([
 			return nil, err
 		}
 		containers = append(containers, newContainers...)
-		if len(newContainers) < opts.Limit {
+		if c.isLastPage(len(newContainers), opts.Limit) {
 			break
 		}
 		opts.Marker = newContainers[len(newContainers)-1].Name
@@ -983,7 +1001,7 @@ func (c *Connection) ContainerNamesAll(ctx context.Context, opts *ContainersOpts
 			return nil, err
 		}
 		containers = append(containers, newContainers...)
-		if len(newContainers) < opts.Limit {
+		if c.isLastPage(len(newContainers), opts.Limit) {
 			break
 		}
 		opts.Marker = newContainers[len(newContainers)-1]
@@ -1173,7 +1191,7 @@ func (c *Connection) ObjectsWalk(ctx context.Context, container string, opts *Ob
 		default:
 			panic("Unknown type returned to ObjectsWalk")
 		}
-		if n < opts.Limit {
+		if c.isLastPage(n, opts.Limit) {
 			break
 		}
 		opts.Marker = last
