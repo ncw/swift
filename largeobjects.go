@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	gopath "path"
 	"strconv"
@@ -57,13 +58,17 @@ func getSegment(segmentPath string, partNumber int) string {
 	return fmt.Sprintf("%s/%016d", segmentPath, partNumber)
 }
 
-func parseFullPath(manifest string) (container string, prefix string) {
+func parseFullPath(manifest string) (container string, prefix string, err error) {
+	manifest, err = url.PathUnescape(manifest)
+	if err != nil {
+		return
+	}
 	components := strings.SplitN(manifest, "/", 2)
 	container = components[0]
 	if len(components) > 1 {
 		prefix = components[1]
 	}
-	return container, prefix
+	return container, prefix, nil
 }
 
 func (headers Headers) IsLargeObjectDLO() bool {
@@ -82,7 +87,10 @@ func (headers Headers) IsLargeObject() bool {
 
 func (c *Connection) getAllSegments(ctx context.Context, container string, path string, headers Headers) (string, []Object, error) {
 	if manifest, isDLO := headers["X-Object-Manifest"]; isDLO {
-		segmentContainer, segmentPath := parseFullPath(manifest)
+		segmentContainer, segmentPath, err := parseFullPath(manifest)
+		if err != nil {
+			return segmentContainer, nil, err
+		}
 		segments, err := c.getAllDLOSegments(ctx, segmentContainer, segmentPath)
 		return segmentContainer, segments, err
 	}
