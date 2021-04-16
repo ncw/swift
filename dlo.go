@@ -46,7 +46,11 @@ func (c *Connection) DynamicLargeObjectMove(ctx context.Context, srcContainer st
 		return err
 	}
 
-	segmentContainer, segmentPath := parseFullPath(headers["X-Object-Manifest"])
+	segmentContainer, segmentPath, err := parseFullPath(headers["X-Object-Manifest"])
+	if err != nil {
+		return err
+	}
+
 	if err := c.createDLOManifest(ctx, dstContainer, dstObjectName, segmentContainer+"/"+segmentPath, info.ContentType, sanitizeLargeObjectMoveHeaders(headers)); err != nil {
 		return err
 	}

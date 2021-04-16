@@ -164,7 +164,10 @@ func (c *Connection) getAllSLOSegments(ctx context.Context, container, path stri
 
 	json.Unmarshal(content, &segmentList)
 	for _, segment := range segmentList {
-		segmentContainer, segPath = parseFullPath(segment.Name[1:])
+		segmentContainer, segPath, err = parseFullPath(segment.Name[1:])
+		if err != nil {
+			return "", nil, err
+		}
 		segments = append(segments, Object{
 			Name:  segPath,
 			Bytes: segment.Bytes,
