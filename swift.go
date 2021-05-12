@@ -126,7 +126,7 @@ type Connection struct {
 	Expires    time.Time // time the token expires, may be Zero if unknown
 	client     *http.Client
 	Auth       Authenticator `json:"-" xml:"-"` // the current authenticator
-	authLock   *sync.Mutex   // lock when R/W StorageUrl, AuthToken, Auth
+	authLock   sync.Mutex    // lock when R/W StorageUrl, AuthToken, Auth
 	// swiftInfo is filled after QueryInfo is called
 	swiftInfo SwiftInfo
 }
@@ -465,9 +465,6 @@ func (c *Connection) setDefaults() {
 // If you don't call it before calling one of the connection methods
 // then it will be called for you on the first access.
 func (c *Connection) Authenticate(ctx context.Context) (err error) {
-	if c.authLock == nil {
-		c.authLock = &sync.Mutex{}
-	}
 	c.authLock.Lock()
 	defer c.authLock.Unlock()
 	return c.authenticate(ctx)
@@ -590,9 +587,6 @@ func (c *Connection) UnAuthenticate() {
 //
 // Doesn't actually check the credentials against the server.
 func (c *Connection) Authenticated() bool {
-	if c.authLock == nil {
-		c.authLock = &sync.Mutex{}
-	}
 	c.authLock.Lock()
 	defer c.authLock.Unlock()
 	return c.authenticated()
