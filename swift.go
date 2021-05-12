@@ -625,7 +625,11 @@ func (i SwiftInfo) SLOMinSegmentSize() int64 {
 
 // Discover Swift configuration by doing a request against /info
 func (c *Connection) QueryInfo(ctx context.Context) (infos SwiftInfo, err error) {
-	infoUrl, err := url.Parse(c.StorageUrl)
+	storageUrl, err := c.GetStorageUrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+	infoUrl, err := url.Parse(storageUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -1858,8 +1862,15 @@ func (c *Connection) ObjectDelete(ctx context.Context, container string, objectN
 
 // ObjectTempUrl returns a temporary URL for an object
 func (c *Connection) ObjectTempUrl(container string, objectName string, secretKey string, method string, expires time.Time) string {
+	c.authLock.Lock()
+	storageUrl := c.StorageUrl
+	c.authLock.Unlock()
+	if storageUrl == "" {
+		return "" // Cannot do better without changing the interface
+	}
+
 	mac := hmac.New(sha1.New, []byte(secretKey))
-	prefix, _ := url.Parse(c.StorageUrl)
+	prefix, _ := url.Parse(storageUrl)
 	body := fmt.Sprintf("%s\n%d\n%s/%s/%s", method, expires.Unix(), prefix.Path, container, objectName)
 	mac.Write([]byte(body))
 	sig := hex.EncodeToString(mac.Sum(nil))
@@ -2285,4 +2296,19 @@ func (c *Connection) VersionObjectList(ctx context.Context, version, object stri
 		Prefix: fmt.Sprintf("%03x", len(object)) + object + "/",
 	}
 	return c.ObjectNames(ctx, version, opts)
+}
+
+// GetStorageUrl returns Swift storage URL.
+func (c *Connection) GetStorageUrl(ctx context.Context) (string, error) {
+	c.authLock.Lock()
+	defer c.authLock.Unlock()
+
+	// Return cached URL even if authentication has expired
+	if c.StorageUrl == "" {
+		err := c.authenticate(ctx)
+		if err != nil {
+			return "", err
+		}
+	}
+	return c.StorageUrl, nil
 }
