@@ -714,6 +714,11 @@ func (c *Connection) Call(ctx context.Context, targetUrl string, p RequestOpts) 
 		retries = c.Retries
 	}
 	var req *http.Request
+	reqBodyBuf, err := ioutil.ReadAll(p.Body)
+	if err != nil {
+		return
+	}
+	reader := bytes.NewReader(reqBodyBuf)
 	for {
 		var authToken string
 		if targetUrl, authToken, err = c.getUrlAndAuthToken(ctx, targetUrl, p.OnReAuth); err != nil {
@@ -735,11 +740,9 @@ func (c *Connection) Call(ctx context.Context, targetUrl string, p RequestOpts) 
 		}
 		timer := time.NewTimer(c.ConnectTimeout)
 		defer timer.Stop()
-		reader := p.Body
-		if reader != nil {
-			reader = newWatchdogReader(reader, c.Timeout, timer)
-		}
-		req, err = http.NewRequestWithContext(ctx, p.Operation, URL.String(), reader)
+		reader.Reset(reqBodyBuf) // or reader.Seek(0, io.SeekStart) ?
+		watchdogReader := newWatchdogReader(reader, c.Timeout, timer)
+		req, err = http.NewRequestWithContext(ctx, p.Operation, URL.String(), watchdogReader)
 		if err != nil {
 			return
 		}
