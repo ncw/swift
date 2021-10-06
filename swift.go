@@ -387,7 +387,13 @@ func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error 
 func readHeaders(resp *http.Response) Headers {
 	headers := Headers{}
 	for key, values := range resp.Header {
-		headers[key] = values[0]
+		// ETag header may be double quoted if following RFC 7232
+		// https://github.com/openstack/swift/blob/2.24.0/CHANGELOG#L9
+		if key == "Etag" {
+			headers[key] = strings.Trim(values[0], "\"")
+		} else {
+			headers[key] = values[0]
+		}
 	}
 	return headers
 }
@@ -1716,7 +1722,9 @@ func (file *ObjectOpenFile) Close() (err error) {
 
 	// Check the MD5 sum if requested
 	if file.checkHash {
-		receivedMd5 := strings.ToLower(file.resp.Header.Get("Etag"))
+		// ETag header may be double quoted if following RFC 7232
+		// https://github.com/openstack/swift/blob/2.24.0/CHANGELOG#L9
+		receivedMd5 := strings.ToLower(strings.Trim(file.resp.Header.Get("Etag"), "\""))
 		calculatedMd5 := fmt.Sprintf("%x", file.hash.Sum(nil))
 		if receivedMd5 != calculatedMd5 {
 			err = ObjectCorrupted
@@ -2125,7 +2133,9 @@ func (c *Connection) objectBase(ctx context.Context, container string, objectNam
 		}
 	}
 
-	info.Hash = resp.Header.Get("Etag")
+	// ETag header may be double quoted if following RFC 7232
+	// https://github.com/openstack/swift/blob/2.24.0/CHANGELOG#L9
+	info.Hash = strings.Trim(resp.Header.Get("Etag"), "\"")
 	if resp.Header.Get("X-Object-Manifest") != "" {
 		info.ObjectType = DynamicLargeObjectType
 	} else if resp.Header.Get("X-Static-Large-Object") != "" {
