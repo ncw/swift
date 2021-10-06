@@ -169,3 +169,4 @@ Contributors
 - Pedro Kiefer <pedro@kiefer.com.br>
 - Martin Chodur <m.chodur@seznam.cz>
 - Devendra <devendranath.thadi3@gmail.com>
+- timss <timsateroy@gmail.com>
