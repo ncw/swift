@@ -424,7 +424,6 @@ func (c *Connection) doTimeoutRequest(timer *time.Timer, req *http.Request) (*ht
 		cancelRequest(c.Transport, req)
 		return nil, TimeoutError
 	}
-	panic("unreachable") // For Go 1.0
 }
 
 // Set defaults for any unset values

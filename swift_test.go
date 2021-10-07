@@ -491,10 +491,10 @@ func TestAuthenticateRace(t *testing.T) {
 			defer wg.Done()
 			err := c.Authenticate(ctx)
 			if err != nil {
-				t.Fatal("Auth failed", err)
+				t.Error("Auth failed", err)
 			}
 			if !c.Authenticated() {
-				t.Fatal("Not authenticated")
+				t.Error("Not authenticated")
 			}
 		}()
 	}
