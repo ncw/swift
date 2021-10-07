@@ -961,8 +961,8 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 				_, _ = rand.Read(r)
 				id := fmt.Sprintf("%X", r)
 				w.Header().Set("X-Storage-Url", s.URL+"/AUTH_"+username)
-				w.Header().Set("X-Auth-Token", "AUTH_tk"+string(id))
-				w.Header().Set("X-Storage-Token", "AUTH_tk"+string(id))
+				w.Header().Set("X-Auth-Token", "AUTH_tk"+id)
+				w.Header().Set("X-Storage-Token", "AUTH_tk"+id)
 				s.Sessions[id] = &session{
 					username: username,
 				}
