@@ -14,7 +14,6 @@ const (
 	v3AuthMethodToken                 = "token"
 	v3AuthMethodPassword              = "password"
 	v3AuthMethodApplicationCredential = "application_credential"
-	v3CatalogTypeObjectStore          = "object-store"
 )
 
 // V3 Authentication request

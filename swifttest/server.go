@@ -188,15 +188,6 @@ type containerResource struct {
 	container *container // non-nil if the container already exists.
 }
 
-var responseParams = map[string]bool{
-	"content-type":        true,
-	"content-language":    true,
-	"expires":             true,
-	"cache-control":       true,
-	"content-disposition": true,
-	"content-encoding":    true,
-}
-
 func fatalf(code int, codeStr string, errf string, a ...interface{}) {
 	panic(&swiftError{
 		statusCode: code,

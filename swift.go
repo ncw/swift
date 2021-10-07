@@ -32,8 +32,7 @@ const (
 	UploadTarGzip       = "tar.gz"              // Data format specifier for Connection.BulkUpload().
 	UploadTarBzip2      = "tar.bz2"             // Data format specifier for Connection.BulkUpload().
 	allContainersLimit  = 10000                 // Number of containers to fetch at once
-	allObjectsLimit     = 10000                 // Number objects to fetch at once
-	allObjectsChanLimit = 1000                  // ...when fetching to a channel
+	allObjectsChanLimit = 1000                  // Number objects to fetch when fetching to a channel
 )
 
 // ObjectType is the type of the swift object, regular, static large,
