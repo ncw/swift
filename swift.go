@@ -1602,7 +1602,9 @@ func (c *Connection) ObjectPut(ctx context.Context, container string, objectName
 func (c *Connection) ObjectPutBytes(ctx context.Context, container string, objectName string, contents []byte, contentType string) (err error) {
 	buf := bytes.NewBuffer(contents)
 	h := Headers{"Content-Length": strconv.Itoa(len(contents))}
-	_, err = c.ObjectPut(ctx, container, objectName, buf, true, "", contentType, h)
+	hash := md5.Sum(contents)
+	hashStr := hex.EncodeToString(hash[:])
+	_, err = c.ObjectPut(ctx, container, objectName, buf, true, hashStr, contentType, h)
 	return
 }
 
@@ -1612,7 +1614,9 @@ func (c *Connection) ObjectPutBytes(ctx context.Context, container string, objec
 func (c *Connection) ObjectPutString(ctx context.Context, container string, objectName string, contents string, contentType string) (err error) {
 	buf := strings.NewReader(contents)
 	h := Headers{"Content-Length": strconv.Itoa(len(contents))}
-	_, err = c.ObjectPut(ctx, container, objectName, buf, true, "", contentType, h)
+	hash := md5.Sum([]byte(contents))
+	hashStr := hex.EncodeToString(hash[:])
+	_, err = c.ObjectPut(ctx, container, objectName, buf, true, hashStr, contentType, h)
 	return
 }
 
