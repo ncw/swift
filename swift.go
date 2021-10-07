@@ -1518,7 +1518,7 @@ func (c *Connection) ObjectCreate(ctx context.Context, container string, objectN
 		}
 		file.resp, file.headers, file.err = c.storage(ctx, opts)
 		// Signal finished
-		pipeReader.Close()
+		_ = pipeReader.Close()
 		close(file.done)
 	}()
 	return

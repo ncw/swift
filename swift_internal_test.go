@@ -150,13 +150,15 @@ func handle(w http.ResponseWriter, r *http.Request) {
 func NewSwiftServer() *SwiftServer {
 	server := &SwiftServer{}
 	http.HandleFunc("/", handle)
-	go http.ListenAndServe(TEST_ADDRESS, nil)
+	go func() {
+		_ = http.ListenAndServe(TEST_ADDRESS, nil)
+	}()
 	fmt.Print("Waiting for server to start ")
 	for {
 		fmt.Print(".")
 		conn, err := net.Dial("tcp", TEST_ADDRESS)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			fmt.Println(" Started")
 			break
 		}
@@ -423,7 +425,10 @@ func TestInternalObjectPutBytes(t *testing.T) {
 		"Content-Type":   "text/plain",
 	}).Rx("12345")
 	defer server.Finished()
-	c.ObjectPutBytes(context.Background(), "container", "object", []byte{'1', '2', '3', '4', '5'}, "text/plain")
+	err := c.ObjectPutBytes(context.Background(), "container", "object", []byte{'1', '2', '3', '4', '5'}, "text/plain")
+	if err != nil {
+		t.Fatal("ObjectPutBytes", err)
+	}
 }
 
 func TestInternalObjectPutString(t *testing.T) {
@@ -434,20 +439,23 @@ func TestInternalObjectPutString(t *testing.T) {
 		"Content-Type":   "text/plain",
 	}).Rx("12345")
 	defer server.Finished()
-	c.ObjectPutString(context.Background(), "container", "object", "12345", "text/plain")
+	err := c.ObjectPutString(context.Background(), "container", "object", "12345", "text/plain")
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSetFromEnv(t *testing.T) {
 	// String
 	s := ""
 
-	os.Setenv("POTATO", "")
+	_ = os.Setenv("POTATO", "")
 	err := setFromEnv(&s, "POTATO")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	os.Setenv("POTATO", "this is a test")
+	_ = os.Setenv("POTATO", "this is a test")
 	err = setFromEnv(&s, "POTATO")
 	if err != nil {
 		t.Fatal(err)
@@ -456,7 +464,7 @@ func TestSetFromEnv(t *testing.T) {
 		t.Fatal("incorrect", s)
 	}
 
-	os.Setenv("POTATO", "new")
+	_ = os.Setenv("POTATO", "new")
 	err = setFromEnv(&s, "POTATO")
 	if err != nil {
 		t.Fatal(err)
@@ -468,7 +476,7 @@ func TestSetFromEnv(t *testing.T) {
 	// Integer
 	i := 0
 
-	os.Setenv("POTATO", "42")
+	_ = os.Setenv("POTATO", "42")
 	err = setFromEnv(&i, "POTATO")
 	if err != nil {
 		t.Fatal(err)
@@ -477,7 +485,7 @@ func TestSetFromEnv(t *testing.T) {
 		t.Fatal("incorrect", i)
 	}
 
-	os.Setenv("POTATO", "43")
+	_ = os.Setenv("POTATO", "43")
 	err = setFromEnv(&i, "POTATO")
 	if err != nil {
 		t.Fatal(err)
@@ -487,7 +495,7 @@ func TestSetFromEnv(t *testing.T) {
 	}
 
 	i = 0
-	os.Setenv("POTATO", "not a number")
+	_ = os.Setenv("POTATO", "not a number")
 	err = setFromEnv(&i, "POTATO")
 	if err == nil {
 		t.Fatal("expecting error but didn't get one")
@@ -495,7 +503,7 @@ func TestSetFromEnv(t *testing.T) {
 
 	// bool
 	var b bool
-	os.Setenv("POTATO", "1")
+	_ = os.Setenv("POTATO", "1")
 	err = setFromEnv(&b, "POTATO")
 	if err != nil {
 		t.Fatal(err)
@@ -506,7 +514,7 @@ func TestSetFromEnv(t *testing.T) {
 
 	// time.Duration
 	var dt time.Duration
-	os.Setenv("POTATO", "5s")
+	_ = os.Setenv("POTATO", "5s")
 	err = setFromEnv(&dt, "POTATO")
 	if err != nil {
 		t.Fatal(err)
@@ -517,7 +525,7 @@ func TestSetFromEnv(t *testing.T) {
 
 	// EndpointType
 	var e EndpointType
-	os.Setenv("POTATO", "internal")
+	_ = os.Setenv("POTATO", "internal")
 	err = setFromEnv(&e, "POTATO")
 	if err != nil {
 		t.Fatal(err)
@@ -533,13 +541,13 @@ func TestSetFromEnv(t *testing.T) {
 		t.Fatal("expecting error")
 	}
 
-	os.Setenv("POTATO", "")
+	_ = os.Setenv("POTATO", "")
 }
 
 func TestApplyEnvironment(t *testing.T) {
 	// We've tested all the setting logic above, so just do a quick test here
 	c := new(Connection)
-	os.Setenv("GOSWIFT_CONNECT_TIMEOUT", "100s")
+	_ = os.Setenv("GOSWIFT_CONNECT_TIMEOUT", "100s")
 	err := c.ApplyEnvironment()
 	if err != nil {
 		t.Fatal(err)
@@ -549,7 +557,7 @@ func TestApplyEnvironment(t *testing.T) {
 	}
 
 	c.ConnectTimeout = 0
-	os.Setenv("GOSWIFT_CONNECT_TIMEOUT", "parse error")
+	_ = os.Setenv("GOSWIFT_CONNECT_TIMEOUT", "parse error")
 	err = c.ApplyEnvironment()
 	if err == nil {
 		t.Fatal("expecting error")
@@ -558,7 +566,7 @@ func TestApplyEnvironment(t *testing.T) {
 		t.Fatal("timeout incorrect", c.ConnectTimeout)
 	}
 
-	os.Setenv("GOSWIFT_CONNECT_TIMEOUT", "")
+	_ = os.Setenv("GOSWIFT_CONNECT_TIMEOUT", "")
 }
 
 func TestApplyEnvironmentAll(t *testing.T) {
@@ -608,7 +616,7 @@ func TestApplyEnvironmentAll(t *testing.T) {
 			item := &items[i]
 			if item.phase == phase {
 				item.oldValue = os.Getenv(item.name) // save old value
-				os.Setenv(item.name, item.value)     // set new value
+				_ = os.Setenv(item.name, item.value) // set new value
 			}
 		}
 
@@ -624,7 +632,7 @@ func TestApplyEnvironmentAll(t *testing.T) {
 				if !reflect.DeepEqual(item.want, got) {
 					t.Errorf("%s: %v != %v", item.name, item.want, got)
 				}
-				os.Setenv(item.name, item.oldValue) // restore old value
+				_ = os.Setenv(item.name, item.oldValue) // restore old value
 			}
 		}
 	}

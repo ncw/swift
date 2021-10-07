@@ -108,5 +108,8 @@ func ExampleConnection_VersionDisable() {
 	defer rollback()
 
 	// Disable versioning on a container.  Note that this does not delete the versioning container.
-	c.VersionDisable(context.Background(), "movies")
+	err := c.VersionDisable(context.Background(), "movies")
+	if err != nil {
+		panic(err)
+	}
 }

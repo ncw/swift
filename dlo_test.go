@@ -3,10 +3,11 @@ package swift
 import (
 	"bytes"
 	"context"
-	"github.com/ncw/swift/v2/swifttest"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/ncw/swift/v2/swifttest"
 )
 
 var srv *swifttest.SwiftServer
@@ -90,8 +91,14 @@ func createDynamicObject(container, object string, t *testing.T) {
 	if err != nil {
 		t.Errorf("Fail at dynamic create Large Object")
 	}
-	bigfile.WriteWithContext(ctx, filecontent)
-	bigfile.CloseWithContext(ctx)
+	_, err = bigfile.WriteWithContext(ctx, filecontent)
+	if err != nil {
+		t.Errorf("WriteWithContext failed: %v", err)
+	}
+	err = bigfile.CloseWithContext(ctx)
+	if err != nil {
+		t.Errorf("CloseWithContext failed: %v", err)
+	}
 	checkObject(container, object, t)
 }
 func checkObject(container, object string, t *testing.T) {
@@ -165,8 +172,14 @@ func createStaticObject(container, object string, t *testing.T) {
 	if err != nil {
 		t.Errorf("Fail at static create Large Object")
 	}
-	bigfile.WriteWithContext(ctx, filecontent)
-	bigfile.CloseWithContext(ctx)
+	_, err = bigfile.WriteWithContext(ctx, filecontent)
+	if err != nil {
+		t.Errorf("WriteWithContext failed: %v", err)
+	}
+	err = bigfile.CloseWithContext(ctx)
+	if err != nil {
+		t.Errorf("CloseWithContext failed: %v", err)
+	}
 	checkObject(container, object, t)
 }
 func moveStaticObject(sc, so, dc, do string, t *testing.T) {

@@ -162,7 +162,10 @@ func (c *Connection) getAllSLOSegments(ctx context.Context, container, path stri
 		return "", nil, err
 	}
 
-	json.Unmarshal(content, &segmentList)
+	err = json.Unmarshal(content, &segmentList)
+	if err != nil {
+		return "", nil, err
+	}
 	for _, segment := range segmentList {
 		segmentContainer, segPath, err = parseFullPath(segment.Name[1:])
 		if err != nil {

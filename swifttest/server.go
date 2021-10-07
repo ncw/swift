@@ -310,9 +310,15 @@ func (r containerResource) get(a *action) interface{} {
 	} else {
 		for _, item := range objects {
 			if obj, ok := item.(*object); ok {
-				a.w.Write([]byte(obj.name + "\n"))
+				_, err := a.w.Write([]byte(obj.name + "\n"))
+				if err != nil {
+					fatalf(500, "WriteFailed", "Write failed")
+				}
 			} else if subdir, ok := item.(Subdir); ok {
-				a.w.Write([]byte(subdir.Subdir + "\n"))
+				_, err := a.w.Write([]byte(subdir.Subdir + "\n"))
+				if err != nil {
+					fatalf(500, "WriteFailed", "Write failed")
+				}
 			}
 		}
 		return nil
@@ -389,7 +395,12 @@ func (r containerResource) put(a *action) interface{} {
 			if err != nil {
 				fatalf(400, "TODO", "Invalid tar.gz")
 			}
-			defer gzr.Close()
+			defer func() {
+				err := gzr.Close()
+				if err != nil {
+					fatalf(400, "CloseFailed", "Close failed")
+				}
+			}()
 			reader = tar.NewReader(gzr)
 		case "tar.bz2":
 			bzr := bzip2.NewReader(dataReader)
@@ -651,7 +662,10 @@ func (objr objectResource) get(a *action) interface{} {
 	} else if value, ok := obj.meta["X-Static-Large-Object"]; ok && value[0] == "True" && a.req.URL.Query().Get("multipart-manifest") != "get" {
 		var segments []io.Reader
 		var segmentList []segment
-		json.Unmarshal(obj.data, &segmentList)
+		err := json.Unmarshal(obj.data, &segmentList)
+		if err != nil {
+			fatalf(400, "BadParameters", "Unmarshal failed.")
+		}
 		cursor := 0
 		size := 0
 		sum := md5.New()
@@ -760,7 +774,10 @@ func (objr objectResource) put(a *action) interface{} {
 		a.req.Header.Set("X-Static-Large-Object", "True")
 
 		var segments []segment
-		json.Unmarshal(data, &segments)
+		err := json.Unmarshal(data, &segments)
+		if err != nil {
+			fatalf(400, "BadParameters", "Unmarshal failed.")
+		}
 		for i := range segments {
 			segments[i].Name = "/" + segments[i].Path
 			segments[i].Path = ""
@@ -892,7 +909,10 @@ func (objr objectResource) copy(a *action) interface{} {
 
 func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	// ignore error from ParseForm as it's usually spurious.
-	req.ParseForm()
+	err := req.ParseForm()
+	if err != nil {
+		fatalf(400, "BadParameters", "Parse form failed.")
+	}
 
 	if fn := s.override[req.URL.Path]; fn != nil {
 		originalRW := w
@@ -1037,9 +1057,15 @@ func (s *SwiftServer) serveHTTP(w http.ResponseWriter, req *http.Request) {
 		} else {
 			switch r := resp.(type) {
 			case string:
-				w.Write([]byte(r))
+				_, err := w.Write([]byte(r))
+				if err != nil {
+					fatalf(500, "WriteFailed", "Write failed.")
+				}
 			default:
-				w.Write(resp.([]byte))
+				_, err := w.Write(resp.([]byte))
+				if err != nil {
+					fatalf(500, "WriteFailed", "Write failed.")
+				}
 			}
 		}
 	}
@@ -1186,7 +1212,10 @@ func (rootResource) get(a *action) interface{} {
 				Name:  container.name,
 			})
 		} else {
-			a.w.Write([]byte(container.name + "\n"))
+			_, err := a.w.Write([]byte(container.name + "\n"))
+			if err != nil {
+				fatalf(500, "WriteFailed", "Write failed.")
+			}
 		}
 	}
 
@@ -1266,7 +1295,10 @@ func (r rootResource) delete(a *action) interface{} {
 		}
 
 		resp := fmt.Sprintf("Number Deleted: %d\nNumber Not Found: %d\nErrors: \nResponse Status: 200 OK\n", nb, notFound)
-		a.w.Write([]byte(resp))
+		_, err = a.w.Write([]byte(resp))
+		if err != nil {
+			fatalf(500, "WriteFailed", "Write failed.")
+		}
 		return nil
 	}
 
@@ -1301,13 +1333,15 @@ func NewSwiftServer(address string) (*SwiftServer, error) {
 		Containers: make(map[string]*container),
 	}
 
-	go http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		server.serveHTTP(w, req)
-	}))
+	go func() {
+		_ = http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			server.serveHTTP(w, req)
+		}))
+	}()
 
 	return server, nil
 }
 
 func (srv *SwiftServer) Close() {
-	srv.Listener.Close()
+	_ = srv.Listener.Close()
 }

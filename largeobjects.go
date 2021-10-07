@@ -149,7 +149,10 @@ func (c *Connection) largeObjectCreate(ctx context.Context, opts *LargeObjectOpt
 
 	if info, headers, err := c.Object(ctx, opts.Container, opts.ObjectName); err == nil {
 		if opts.Flags&os.O_TRUNC != 0 {
-			c.LargeObjectDelete(ctx, opts.Container, opts.ObjectName)
+			err := c.LargeObjectDelete(ctx, opts.Container, opts.ObjectName)
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			currentLength = info.Bytes
 			if headers.IsLargeObject() {
@@ -365,7 +368,7 @@ func (file *largeObjectCreateFile) WriteWithContext(ctx context.Context, buf []b
 	return sizeToWrite, nil
 }
 
-func (file *largeObjectCreateFile) writeSegment(ctx context.Context, buf []byte, writeSegmentIdx int, relativeFilePos int) (*Object, int, error) {
+func (file *largeObjectCreateFile) writeSegment(ctx context.Context, buf []byte, writeSegmentIdx int, relativeFilePos int) (obj *Object, n int, err error) {
 	var (
 		readers         []io.Reader
 		existingSegment *Object
@@ -385,7 +388,12 @@ func (file *largeObjectCreateFile) writeSegment(ctx context.Context, buf []byte,
 			if err != nil {
 				return nil, 0, err
 			}
-			defer existingSegmentReader.Close()
+			defer func() {
+				closeErr := existingSegmentReader.Close()
+				if closeErr != nil {
+					err = closeErr
+				}
+			}()
 			sizeToRead -= relativeFilePos
 			segmentSize += relativeFilePos
 			readers = []io.Reader{existingSegmentReader}
@@ -403,7 +411,12 @@ func (file *largeObjectCreateFile) writeSegment(ctx context.Context, buf []byte,
 		if err != nil {
 			return nil, 0, err
 		}
-		defer tailSegmentReader.Close()
+		defer func() {
+			closeErr := tailSegmentReader.Close()
+			if closeErr != nil {
+				err = closeErr
+			}
+		}()
 		segmentSize = int(existingSegment.Bytes)
 		readers = append(readers, tailSegmentReader)
 	}

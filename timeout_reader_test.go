@@ -67,7 +67,7 @@ func TestTimeoutReaderNoTimeout(t *testing.T) {
 	if test.closed {
 		t.Fatal("Shouldn't be closed")
 	}
-	tr.Close()
+	_ = tr.Close()
 	if !test.closed {
 		t.Fatal("Should be closed")
 	}
@@ -100,7 +100,7 @@ func TestTimeoutReaderTimeout(t *testing.T) {
 	if test.closed {
 		t.Fatal("Shouldn't be closed")
 	}
-	tr.Close()
+	_ = tr.Close()
 	if !test.closed {
 		t.Fatal("Should be closed")
 	}

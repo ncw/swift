@@ -1627,7 +1627,9 @@ func TestObjectsDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.ObjectDelete(ctx, CONTAINER, "directory")
+	defer func() {
+		_ = c.ObjectDelete(ctx, CONTAINER, "directory")
+	}()
 
 	// Look for the directory object and check we aren't confusing
 	// it with a pseudo directory object
@@ -1662,7 +1664,9 @@ func TestObjectsPseudoDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.ObjectDelete(ctx, CONTAINER, "directory/puppy.jpg")
+	defer func() {
+		_ = c.ObjectDelete(ctx, CONTAINER, "directory/puppy.jpg")
+	}()
 
 	// Look for the pseudo directory
 	objects, err := c.Objects(ctx, CONTAINER, &swift.ObjectsOpts{Delimiter: '/'})
@@ -2175,7 +2179,12 @@ func TestTempUrl(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to retrieve file from temporary url")
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			t.Error("Close failed", err)
+		}
+	}()
 	if resp.StatusCode == 401 {
 		t.Log("Server doesn't support tempurl")
 	} else if resp.StatusCode != 200 {
@@ -2190,7 +2199,12 @@ func TestTempUrl(t *testing.T) {
 		if err != nil {
 			t.Fatal("Failed to retrieve file from temporary url")
 		}
-		defer resp.Body.Close()
+		defer func() {
+			err := resp.Body.Close()
+			if err != nil {
+				t.Error("Close failed", err)
+			}
+		}()
 		if resp.StatusCode != 401 {
 			t.Fatal("Expecting server to forbid access to object")
 		}
