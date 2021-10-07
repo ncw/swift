@@ -1,0 +1,107 @@
+---
+# Github Actions build for swift
+# -*- compile-command: "yamllint -f parsable build.yml" -*-
+
+name: build
+
+# Trigger the workflow on push or pull request
+on:
+  push:
+    branches:
+      - '*'
+    tags:
+      - '*'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      manual:
+        required: true
+        default: true
+
+jobs:
+  build:
+    if: ${{ github.repository == 'ncw/swift' || github.event.inputs.manual }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        job_name: ['go1.17', 'go1.16', 'go1.15']
+
+        include:
+          - job_name: go1.17
+            os: ubuntu-latest
+            go: '1.17.x'
+            gotests: true
+            integrationtest: true
+            check: true
+
+          - job_name: go1.16
+            os: ubuntu-latest
+            go: '1.16.x'
+            gotests: true
+            integrationtest: true
+            check: false
+
+          - job_name: go1.15
+            os: ubuntu-latest
+            go: '1.15.x'
+            gotests: true
+            integrationtest: true
+            check: false
+
+    name: ${{ matrix.job_name }}
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          stable: 'false'
+          go-version: ${{ matrix.go }}
+
+      - name: Print Go version and environment
+        shell: bash
+        run: |
+          printf "Using go at: $(which go)\n"
+          printf "Go version: $(go version)\n"
+          printf "\n\nGo environment:\n\n"
+          go env
+          printf "\n\nSystem environment:\n\n"
+          env
+
+      - name: Go module cache
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Build
+        shell: bash
+        run: |
+          go build ./...
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          go test -v
+        if: matrix.gotests
+
+      - name: Integration tests
+        shell: bash
+        run: |
+          ./integration_test.sh
+        if: matrix.integrationtest
+
+      - name: Code quality test
+        shell: bash
+        run: |
+          test -z "$(go fmt ./...)"
+        if: matrix.check
