@@ -822,7 +822,7 @@ func TestObjectPut(t *testing.T) {
 	// Set content size incorrectly - should produce an error
 	headers["Content-Length"] = strconv.FormatInt(CONTENT_SIZE-1, 10)
 	contents := bytes.NewBufferString(CONTENTS)
-	h, err := c.ObjectPut(ctx, CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
+	_, err := c.ObjectPut(ctx, CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
 	if err == nil {
 		t.Fatal("Expecting error but didn't get one")
 	}
@@ -830,7 +830,7 @@ func TestObjectPut(t *testing.T) {
 	// Now set content size correctly
 	contents = bytes.NewBufferString(CONTENTS)
 	headers["Content-Length"] = strconv.FormatInt(CONTENT_SIZE, 10)
-	h, err = c.ObjectPut(ctx, CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
+	h, err := c.ObjectPut(ctx, CONTAINER, OBJECT, contents, true, CONTENT_MD5, "text/plain", headers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2331,6 +2331,9 @@ func TestDLOAppend(t *testing.T) {
 	}
 
 	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
 	buf := bytes.NewBuffer([]byte(contents))
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
@@ -2894,6 +2897,9 @@ func TestSLOAppend(t *testing.T) {
 	}
 
 	contents, err := c.ObjectGetString(ctx, CONTAINER, OBJECT)
+	if err != nil {
+		t.Fatal(err)
+	}
 	buf := bytes.NewBuffer([]byte(contents))
 	multi := io.MultiWriter(buf, out)
 	for i := 0; i < 2; i++ {
