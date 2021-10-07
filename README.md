@@ -4,11 +4,8 @@ Swift
 This package provides an easy to use library for interfacing with Swift / Openstack Object Storage / Rackspace cloud
 files from the Go Language
 
-See here for package docs
-
-http://godoc.org/github.com/ncw/swift/v2
-
-[![Build Status](https://api.travis-ci.org/ncw/swift.svg?branch=master)](https://travis-ci.org/ncw/swift) [![GoDoc](https://godoc.org/github.com/ncw/swift/v2?status.svg)](https://godoc.org/github.com/ncw/swift/v2)
+[![Build Status](https://github.com/ncw/swift/workflows/build/badge.svg?branch=master)](https://github.com/ncw/swift/actions)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ncw/v2/swift.svg)](https://pkg.go.dev/github.com/ncw/swift/v2)
 
 Install
 -------
@@ -22,7 +19,7 @@ Usage
 
 See here for full package docs
 
-- http://godoc.org/github.com/ncw/swift/v2
+- https://pkg.go.dev/github.com/ncw/swift/v2
 
 Here is a short example from the docs
 
