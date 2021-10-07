@@ -34,7 +34,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"testing"
 	"time"
 )
 
@@ -51,8 +50,6 @@ type SwiftServer struct {
 	// See https://golang.org/pkg/sync/atomic/#pkg-note-BUG for more details.
 	reqId int64
 	sync.RWMutex
-	t        *testing.T
-	mu       sync.Mutex
 	Listener net.Listener
 	AuthURL  string
 	URL      string
@@ -145,7 +142,6 @@ type container struct {
 	sync.RWMutex
 	metadata
 	name    string
-	ctime   time.Time
 	objects map[string]*object
 }
 
