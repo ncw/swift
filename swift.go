@@ -118,10 +118,10 @@ type Connection struct {
 	TenantDomain                string            // Name of the tenant's domain (v3 auth only), only needed if it differs from the user domain
 	TenantDomainId              string            // Id of the tenant's domain (v3 auth only), only needed if it differs the from user domain
 	TrustId                     string            // Id of the trust (v3 auth only)
-	ProjectId                   string            // Id of the project (v3 federated auth only)
-	IdentityProvider            string            // Identity provider (v3 federated auth only)
-	AuthProtocol                string            // AuthProtocol, e.g. 'openid'  (v3 federated auth only)
 	AccessToken                 string            // Access token (v3 federated auth only)
+	AuthProtocol                string            // AuthProtocol, e.g. 'openid'  (v3 federated auth only)
+	IdentityProvider            string            // Identity provider (v3 federated auth only)
+	ProjectId                   string            // Id of the project (v3 federated auth only)
 	Transport                   http.RoundTripper `json:"-" xml:"-"` // Optional specialised http.Transport (eg. for Google Appengine)
 	// These are filled in after Authenticate is called as are the defaults for above
 	StorageUrl string
@@ -261,12 +261,10 @@ func (c *Connection) ApplyEnvironment() (err error) {
 		{&c.TrustId, "OS_TRUST_ID"},
 		{&c.StorageUrl, "OS_STORAGE_URL"},
 		{&c.AuthToken, "OS_AUTH_TOKEN"},
-
-		{&c.ProjectId, "OS_PROJECT_ID"},
 		{&c.AccessToken, "OS_ACCESS_TOKEN"},
-		{&c.IdentityProvider, "OS_IDENTITY_PROVIDER"},
 		{&c.AuthProtocol, "OS_PROTOCOL"},
-
+		{&c.IdentityProvider, "OS_IDENTITY_PROVIDER"},
+		{&c.ProjectId, "OS_PROJECT_ID"},
 		// v1 auth alternatives
 		{&c.ApiKey, "ST_KEY"},
 		{&c.UserName, "ST_USER"},
