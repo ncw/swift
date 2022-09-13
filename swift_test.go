@@ -643,7 +643,7 @@ func TestContainer(t *testing.T) {
 	ctx := context.Background()
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
-	info, headers, err := c.Container(ctx, CONTAINER)
+	info, headers, err := c.Container(ctx, CONTAINER, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -711,7 +711,7 @@ func TestContainerUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, headers, err := c.Container(ctx, CONTAINER)
+	_, headers, err := c.Container(ctx, CONTAINER, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -797,7 +797,7 @@ func TestObjectPutString(t *testing.T) {
 		}
 	}()
 
-	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -846,7 +846,7 @@ func TestObjectPut(t *testing.T) {
 	}
 
 	// Fetch object info and compare
-	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -878,7 +878,7 @@ func TestObjectPutWithReauth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -909,7 +909,7 @@ func TestObjectPutStringWithReauth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -939,7 +939,7 @@ func TestObjectEmpty(t *testing.T) {
 		}
 	}()
 
-	info, _, err := c.Object(ctx, CONTAINER, EMPTYOBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, EMPTYOBJECT, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -992,7 +992,7 @@ func TestSymlinkObject(t *testing.T) {
 		}
 	}()
 
-	md, _, err := c.Object(ctx, CONTAINER, SYMLINK_OBJECT)
+	md, _, err := c.Object(ctx, CONTAINER, SYMLINK_OBJECT, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1057,7 +1057,7 @@ func TestStaticSymlinkObject(t *testing.T) {
 		}
 	}()
 
-	md, _, err := c.Object(ctx, CONTAINER, SYMLINK_OBJECT2)
+	md, _, err := c.Object(ctx, CONTAINER, SYMLINK_OBJECT2, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1087,7 +1087,7 @@ func TestObjectPutBytes(t *testing.T) {
 		}
 	}()
 
-	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1117,7 +1117,7 @@ func TestObjectPutMimeType(t *testing.T) {
 		}
 	}()
 
-	info, _, err := c.Object(ctx, CONTAINER, "test.jpg")
+	info, _, err := c.Object(ctx, CONTAINER, "test.jpg", nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1487,7 +1487,7 @@ func TestObject(t *testing.T) {
 	ctx := context.Background()
 	c, rollback := makeConnectionWithObjectHeaders(t)
 	defer rollback()
-	object, headers, err := c.Object(ctx, CONTAINER, OBJECT)
+	object, headers, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1506,7 +1506,7 @@ func TestObjectUpdate2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, headers, err := c.Object(ctx, CONTAINER, OBJECT)
+	_, headers, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1801,7 +1801,7 @@ func TestObjectCopyWithMetadata(t *testing.T) {
 		}
 	}()
 	// Re-read the metadata to see if it is correct
-	_, headers, err := c.Object(ctx, CONTAINER, OBJECT2)
+	_, headers, err := c.Object(ctx, CONTAINER, OBJECT2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1820,7 +1820,7 @@ func TestObjectMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	testExistenceAfterDelete(t, c, CONTAINER, OBJECT)
-	_, _, err = c.Object(ctx, CONTAINER, OBJECT2)
+	_, _, err = c.Object(ctx, CONTAINER, OBJECT2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1830,7 +1830,7 @@ func TestObjectMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	testExistenceAfterDelete(t, c, CONTAINER, OBJECT2)
-	_, headers, err := c.Object(ctx, CONTAINER, OBJECT)
+	_, headers, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1846,7 +1846,7 @@ func TestObjectUpdateContentType(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Re-read the metadata to see if it is correct
-	_, headers, err := c.Object(ctx, CONTAINER, OBJECT)
+	_, headers, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2000,7 +2000,7 @@ func TestVersionDeleteContent(t *testing.T) {
 func testExistenceAfterDelete(t *testing.T, c *swift.Connection, container, object string) {
 	ctx := context.Background()
 	for i := 10; i <= 0; i-- {
-		_, _, err := c.Object(ctx, container, object)
+		_, _, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 		if err == swift.ObjectNotFound {
 			break
 		}
@@ -2110,11 +2110,11 @@ func TestBulkUpload(t *testing.T) {
 	}
 	t.Log("Errors:", result.Errors)
 
-	_, _, err = c.Object(ctx, CONTAINER, OBJECT)
+	_, _, err = c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Error("Expecting object to be found")
 	}
-	_, _, err = c.Object(ctx, CONTAINER, OBJECT2)
+	_, _, err = c.Object(ctx, CONTAINER, OBJECT2, nil)
 	if err != nil {
 		t.Error("Expecting object to be found")
 	}
@@ -2266,7 +2266,7 @@ func TestDLOCreate(t *testing.T) {
 	if contents != expected {
 		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
 	}
-	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2833,7 +2833,7 @@ func TestSLOCreate(t *testing.T) {
 	if contents != expected {
 		t.Errorf("Contents wrong, expected %q, got: %q", expected, contents)
 	}
-	info, _, err := c.Object(ctx, CONTAINER, OBJECT)
+	info, _, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3196,7 +3196,7 @@ func testSegmentation(t *testing.T, c *swift.Connection, createObj func() swift.
 		if container != SEGMENTS_CONTAINER {
 			t.Errorf("Segments container wrong, expected %q, got: %q", SEGMENTS_CONTAINER, container)
 		}
-		_, headers, err := c.Object(ctx, CONTAINER, OBJECT)
+		_, headers, err := c.Object(ctx, CONTAINER, OBJECT, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3241,7 +3241,7 @@ func TestContainerDelete(t *testing.T) {
 	if err != swift.ContainerNotFound {
 		t.Fatal("Expecting container not found", err)
 	}
-	_, _, err = c.Container(ctx, CONTAINER)
+	_, _, err = c.Container(ctx, CONTAINER, nil)
 	if err != swift.ContainerNotFound {
 		t.Fatal("Expecting container not found", err)
 	}

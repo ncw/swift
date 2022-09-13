@@ -103,7 +103,7 @@ func createDynamicObject(container, object string, t *testing.T) {
 }
 func checkObject(container, object string, t *testing.T) {
 	ctx := context.Background()
-	info, header, err := con.Object(ctx, container, object)
+	info, header, err := con.Object(ctx, container, object, nil)
 	if err != nil {
 		t.Errorf("Fail at get Large Object metadata: %s", err.Error())
 	}
@@ -127,7 +127,7 @@ func checkObject(container, object string, t *testing.T) {
 
 }
 func checkNotExistObject(container, object string, t *testing.T) {
-	_, _, err = con.Object(context.Background(), container, object)
+	_, _, err = con.Object(context.Background(), container, object, nil)
 	if err == nil || err.Error() != "Object Not Found" {
 		t.Errorf("Fail at checkNotExistObject object: %s", err)
 	}

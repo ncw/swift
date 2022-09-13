@@ -147,7 +147,7 @@ func (c *Connection) largeObjectCreate(ctx context.Context, opts *LargeObjectOpt
 		return nil, err
 	}
 
-	if info, headers, err := c.Object(ctx, opts.Container, opts.ObjectName); err == nil {
+	if info, headers, err := c.Object(ctx, opts.Container, opts.ObjectName, nil); err == nil {
 		if opts.Flags&os.O_TRUNC != 0 {
 			err := c.LargeObjectDelete(ctx, opts.Container, opts.ObjectName)
 			if err != nil {
@@ -214,7 +214,7 @@ func (c *Connection) largeObjectCreate(ctx context.Context, opts *LargeObjectOpt
 
 // LargeObjectDelete deletes the large object named by container, path
 func (c *Connection) LargeObjectDelete(ctx context.Context, container string, objectName string) error {
-	_, headers, err := c.Object(ctx, container, objectName)
+	_, headers, err := c.Object(ctx, container, objectName, nil)
 	if err != nil {
 		return err
 	}
@@ -260,7 +260,7 @@ func (c *Connection) LargeObjectDelete(ctx context.Context, container string, ob
 // If the object is a Static Large Object (SLO), it retrieves the JSON content
 // of the manifest and return all the segments of it.
 func (c *Connection) LargeObjectGetSegments(ctx context.Context, container string, path string) (string, []Object, error) {
-	_, headers, err := c.Object(ctx, container, path)
+	_, headers, err := c.Object(ctx, container, path, nil)
 	if err != nil {
 		return "", nil, err
 	}
@@ -320,7 +320,7 @@ func (c *Connection) waitForSegmentsToShowUp(ctx context.Context, container, obj
 	err = withLORetry(expectedSize, func() (Headers, int64, error) {
 		var info Object
 		var headers Headers
-		info, headers, err = c.objectBase(ctx, container, objectName)
+		info, headers, err = c.objectBase(ctx, container, objectName, nil)
 		if err != nil {
 			return headers, 0, err
 		}
