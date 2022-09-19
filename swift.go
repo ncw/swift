@@ -1114,16 +1114,13 @@ func (c *Connection) Objects(ctx context.Context, container string, opts *Object
 			object.ContentType = "application/directory"
 		}
 		if object.ServerLastModified != "" {
-			// 2012-11-11T14:49:47.887250
+			// e.g. 2012-11-11T14:49:47, 2012-11-11T14:49:47Z, 2012-11-11T14:49:47.887250, or 2012-11-11T14:49:47.887250Z
+			// Remove the Z suffix and fractional seconds if present. This then keeps it consistent with Object which
+			// can only return timestamps accurate to 1 second
 			//
-			// Remove fractional seconds if present. This
-			// then keeps it consistent with Object
-			// which can only return timestamps accurate
-			// to 1 second
-			//
-			// The TimeFormat will parse fractional
-			// seconds if desired though
-			datetime := strings.SplitN(object.ServerLastModified, ".", 2)[0]
+			// The TimeFormat will parse fractional seconds if desired though
+			lastModified := strings.TrimSuffix(object.ServerLastModified, "Z")
+			datetime := strings.SplitN(lastModified, ".", 2)[0]
 			object.LastModified, err = time.Parse(TimeFormat, datetime)
 			if err != nil {
 				return nil, err
