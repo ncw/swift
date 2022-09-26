@@ -131,6 +131,10 @@ type Connection struct {
 	// Workarounds for non-compliant servers that don't always return opts.Limit items per page
 	FetchUntilEmptyPage       bool // Always fetch unless we received an empty page
 	PartialPageFetchThreshold int  // Fetch if the current page is this percentage of opts.Limit
+	// Extra Headers for Continer HEAD reqeust
+	ExtraHeadersForContinerHEAD Headers `json:"-" xml:"-"`
+	// Extra Headers for Object HEAD reqeust
+	ExtraHeadersForObjectHEAD Headers `json:"-" xml:"-"`
 }
 
 // setFromEnv reads the value that param points to (it must be a
@@ -1328,14 +1332,14 @@ func (c *Connection) ContainerDelete(ctx context.Context, container string) erro
 
 // Container returns info about a single container including any
 // metadata in the headers.
-func (c *Connection) Container(ctx context.Context, container string, h Headers) (info Container, headers Headers, err error) {
+func (c *Connection) Container(ctx context.Context, container string) (info Container, headers Headers, err error) {
 	var resp *http.Response
 	resp, headers, err = c.storage(ctx, RequestOpts{
 		Container:  container,
 		Operation:  "HEAD",
 		ErrorMap:   ContainerErrorMap,
 		NoResponse: true,
-		Headers:    h,
+		Headers:    c.ExtraHeadersForContinerHEAD,
 	})
 	if err != nil {
 		return
@@ -1720,7 +1724,7 @@ func (file *ObjectOpenFile) Seek(ctx context.Context, offset int64, whence int) 
 // from the server.
 func (file *ObjectOpenFile) Length(ctx context.Context) (int64, error) {
 	if !file.lengthOk {
-		info, _, err := file.connection.Object(ctx, file.container, file.objectName, nil)
+		info, _, err := file.connection.Object(ctx, file.container, file.objectName)
 		file.length = info.Bytes
 		file.lengthOk = (err == nil)
 		return file.length, err
@@ -2108,9 +2112,9 @@ func (c *Connection) BulkUpload(ctx context.Context, uploadPath string, dataStre
 // May return ObjectNotFound.
 //
 // Use headers.ObjectMetadata() to read the metadata in the Headers.
-func (c *Connection) Object(ctx context.Context, container string, objectName string, h Headers) (info Object, headers Headers, err error) {
+func (c *Connection) Object(ctx context.Context, container string, objectName string) (info Object, headers Headers, err error) {
 	err = withLORetry(0, func() (Headers, int64, error) {
-		info, headers, err = c.objectBase(ctx, container, objectName, h)
+		info, headers, err = c.objectBase(ctx, container, objectName)
 		if err != nil {
 			return headers, 0, err
 		}
@@ -2119,7 +2123,7 @@ func (c *Connection) Object(ctx context.Context, container string, objectName st
 	return
 }
 
-func (c *Connection) objectBase(ctx context.Context, container string, objectName string, h Headers) (info Object, headers Headers, err error) {
+func (c *Connection) objectBase(ctx context.Context, container string, objectName string) (info Object, headers Headers, err error) {
 	var resp *http.Response
 	resp, headers, err = c.storage(ctx, RequestOpts{
 		Container:  container,
@@ -2127,7 +2131,7 @@ func (c *Connection) objectBase(ctx context.Context, container string, objectNam
 		Operation:  "HEAD",
 		ErrorMap:   objectErrorMap,
 		NoResponse: true,
-		Headers:    h,
+		Headers:    c.ExtraHeadersForObjectHEAD,
 	})
 	if err != nil {
 		return
@@ -2299,7 +2303,7 @@ func (c *Connection) VersionEnable(ctx context.Context, current, version string)
 		return err
 	}
 	// Check to see if the header was set properly
-	_, headers, err := c.Container(ctx, current, nil)
+	_, headers, err := c.Container(ctx, current)
 	if err != nil {
 		return err
 	}

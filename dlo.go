@@ -41,7 +41,7 @@ func (c *Connection) DynamicLargeObjectDelete(ctx context.Context, container str
 
 // DynamicLargeObjectMove moves a dynamic large object from srcContainer, srcObjectName to dstContainer, dstObjectName
 func (c *Connection) DynamicLargeObjectMove(ctx context.Context, srcContainer string, srcObjectName string, dstContainer string, dstObjectName string) error {
-	info, headers, err := c.Object(ctx, srcContainer, srcObjectName, nil)
+	info, headers, err := c.Object(ctx, srcContainer, srcObjectName)
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func (c *Connection) getAllDLOSegments(ctx context.Context, segmentContainer, se
 		//guaranteed to return the correct metadata, except for the pathological
 		//case of an outage of large parts of the Swift cluster or its network,
 		//since every segment is only written once.)
-		segment, _, err := c.Object(ctx, segmentContainer, segmentName, nil)
+		segment, _, err := c.Object(ctx, segmentContainer, segmentName)
 		switch err {
 		case nil:
 			//found new segment -> add it in the correct position and keep

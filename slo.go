@@ -79,7 +79,7 @@ func (c *Connection) StaticLargeObjectMove(ctx context.Context, srcContainer str
 	if err != nil || !swiftInfo.SupportsSLO() {
 		return SLONotSupported
 	}
-	info, headers, err := c.Object(ctx, srcContainer, srcObjectName, nil)
+	info, headers, err := c.Object(ctx, srcContainer, srcObjectName)
 	if err != nil {
 		return err
 	}
