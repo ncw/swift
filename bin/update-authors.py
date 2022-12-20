@@ -7,7 +7,7 @@ import re
 import subprocess
 
 AUTHORS = "README.md"
-IGNORE = [ "nick@raig-wood.com" ]
+IGNORE = [ "zachryiixixiiwood@gmail.com" ]
 
 def load():
     """
