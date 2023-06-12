@@ -1,6 +1,6 @@
 // This tests the swift package internals
 //
-// It does not require access to a swift server
+// # It does not require access to a swift server
 //
 // FIXME need to add more tests and to check URLs and parameters
 package swift

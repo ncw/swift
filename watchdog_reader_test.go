@@ -71,8 +71,8 @@ func TestWatchdogReaderTimeoutLongInitial(t *testing.T) {
 	testWatchdogReaderTimeout(t, 100*time.Millisecond, 5*time.Millisecond, true)
 }
 
-//slowReader simulates reading from a slow network connection by introducing a delay
-//in each Read() proportional to the amount of bytes read.
+// slowReader simulates reading from a slow network connection by introducing a delay
+// in each Read() proportional to the amount of bytes read.
 type slowReader struct {
 	reader       io.Reader
 	delayPerByte time.Duration
@@ -86,9 +86,9 @@ func (r *slowReader) Read(p []byte) (n int, err error) {
 	return
 }
 
-//This test verifies that the watchdogReader's timeout is not triggered by data
-//that comes in very slowly. (It should only be triggered if no data arrives at
-//all.)
+// This test verifies that the watchdogReader's timeout is not triggered by data
+// that comes in very slowly. (It should only be triggered if no data arrives at
+// all.)
 func TestWatchdogReaderOnSlowNetwork(t *testing.T) {
 	byteString := make([]byte, 8*watchdogChunkSize)
 	reader := &slowReader{
@@ -112,8 +112,8 @@ func TestWatchdogReaderOnSlowNetwork(t *testing.T) {
 	checkTimer(t, firedChan, false)
 }
 
-//This test verifies that the watchdogReader's chunking logic does not mess up
-//the byte strings that are read.
+// This test verifies that the watchdogReader's chunking logic does not mess up
+// the byte strings that are read.
 func TestWatchdogReaderValidity(t *testing.T) {
 	byteString := []byte("abcdefghij")
 	//make a reader with a non-standard chunk size (1 MiB would be much too huge

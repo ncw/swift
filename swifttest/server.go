@@ -3,7 +3,6 @@
 //
 // This comes from the https://github.com/mitchellh/goamz
 // and was adapted for Swift
-//
 package swifttest
 
 import (
@@ -541,7 +540,6 @@ func getPAXRecords(h *tar.Header) map[string]string {
 // http://docs.openstack.org/api/openstack-object-storage/1.0/content/ch_object-storage-dev-api-storage.html
 //
 // Container names cannot exceed 256 bytes and cannot contain the / character.
-//
 func validContainerName(name string) bool {
 	if len(name) == 0 || len(name) > 256 {
 		return false
