@@ -19,7 +19,9 @@ import (
 )
 
 // NotLargeObject is returned if an operation is performed on an object which isn't large.
-var NotLargeObject = errors.New("Not a large object")
+//
+//nolint:stylecheck
+var NotLargeObject = errors.New("not a large object")
 
 // readAfterWriteTimeout defines the time we wait before an object appears after having been uploaded
 var readAfterWriteTimeout = 15 * time.Second
@@ -309,7 +311,7 @@ func withLORetry(expectedSize int64, fn func() (Headers, int64, error)) (err err
 		select {
 		case <-endTimer.C:
 			waitTimer.Stop()
-			err = fmt.Errorf("Timeout expired while waiting for object to have size == %d, got: %d", expectedSize, sz)
+			err = fmt.Errorf("timeout expired while waiting for object to have size == %d, got: %d", expectedSize, sz)
 			return
 		case <-waitTimer.C:
 			waitingTime *= 2

@@ -1477,7 +1477,7 @@ func TestObjectUpdate(t *testing.T) {
 }
 
 func checkTime(t *testing.T, when time.Time, low, high int) {
-	dt := time.Now().Sub(when)
+	dt := time.Since(when)
 	if dt < time.Duration(low)*time.Second || dt > time.Duration(high)*time.Second {
 		t.Errorf("Time is wrong: dt=%q, when=%q", dt, when)
 	}
@@ -2471,7 +2471,7 @@ func TestDLOCreateMissingSegmentsInList(t *testing.T) {
 
 	listURL := "/v1/AUTH_" + swifttest.TEST_ACCOUNT + "/" + SEGMENTS_CONTAINER
 	srv.SetOverride(listURL, func(w http.ResponseWriter, r *http.Request, recorder *httptest.ResponseRecorder) {
-		for k, v := range recorder.HeaderMap {
+		for k, v := range recorder.Result().Header {
 			w.Header().Set(k, v[0])
 		}
 		w.WriteHeader(recorder.Code)
@@ -2543,7 +2543,7 @@ func TestDLOCreateIncorrectSize(t *testing.T) {
 	headCount := 0
 	expectedHeadCount := 5
 	srv.SetOverride(listURL, func(w http.ResponseWriter, r *http.Request, recorder *httptest.ResponseRecorder) {
-		for k, v := range recorder.HeaderMap {
+		for k, v := range recorder.Result().Header {
 			w.Header().Set(k, v[0])
 		}
 		if r.Method == "HEAD" {
@@ -3172,7 +3172,7 @@ func testSegmentation(t *testing.T, c *swift.Connection, createObj func() swift.
 				t.Error(err)
 			}
 			if i < len(tCase.seeks)-1 {
-				_, err = out.Seek(int64(tCase.seeks[i]), os.SEEK_CUR)
+				_, err = out.Seek(int64(tCase.seeks[i]), io.SeekCurrent)
 				if err != nil {
 					t.Error(err)
 				}

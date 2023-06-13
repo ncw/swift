@@ -16,6 +16,9 @@ type StaticLargeObjectCreateFile struct {
 	largeObjectCreateFile
 }
 
+// SLONotSupported is returned as an error when Static Large Objects are not supported.
+//
+//nolint:stylecheck
 var SLONotSupported = errors.New("SLO not supported")
 
 type swiftSegment struct {

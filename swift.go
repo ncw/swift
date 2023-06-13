@@ -152,7 +152,7 @@ func setFromEnv(param interface{}, name string) (err error) {
 			*result, err = strconv.Atoi(val)
 		}
 	case *bool:
-		if *result == false {
+		if !*result {
 			*result, err = strconv.ParseBool(val)
 		}
 	case *time.Duration:
@@ -609,7 +609,7 @@ func (c *Connection) authenticated() bool {
 	if c.Expires.IsZero() {
 		return true
 	}
-	timeUntilExpiry := c.Expires.Sub(time.Now())
+	timeUntilExpiry := time.Until(c.Expires)
 	return timeUntilExpiry >= 60*time.Second
 }
 
@@ -655,7 +655,7 @@ func (c *Connection) QueryInfo(ctx context.Context) (infos SwiftInfo, err error)
 	if err == nil {
 		if resp.StatusCode != http.StatusOK {
 			drainAndClose(resp.Body, nil)
-			return nil, fmt.Errorf("Invalid status code for info request: %d", resp.StatusCode)
+			return nil, fmt.Errorf("invalid status code for info request: %d", resp.StatusCode)
 		}
 		err = readJson(resp, &infos)
 		if err == nil {
@@ -760,7 +760,7 @@ func (c *Connection) Call(ctx context.Context, targetUrl string, p RequestOpts) 
 				if k == "Content-Length" {
 					req.ContentLength, err = strconv.ParseInt(v, 10, 64)
 					if err != nil {
-						err = fmt.Errorf("Invalid %q header %q: %v", k, v, err)
+						err = fmt.Errorf("invalid %q header %q: %v", k, v, err)
 						return
 					}
 				} else {
@@ -1141,7 +1141,7 @@ func (c *Connection) Objects(ctx context.Context, container string, opts *Object
 
 // objectsAllOpts makes a copy of opts if set or makes a new one and
 // overrides Limit and Marker
-// Marker is not overriden if KeepMarker is set
+// Marker is not overridden if KeepMarker is set
 func objectsAllOpts(opts *ObjectsOpts, Limit int) *ObjectsOpts {
 	var newOpts ObjectsOpts
 	if opts != nil {
@@ -1443,7 +1443,7 @@ func (file *ObjectCreateFile) Headers() (Headers, error) {
 	select {
 	case <-file.done:
 	default:
-		return nil, fmt.Errorf("Cannot get metadata, object upload failed or has not yet completed.")
+		return nil, fmt.Errorf("cannot get metadata, object upload failed or has not yet completed")
 	}
 	return file.headers, nil
 }
@@ -1910,7 +1910,7 @@ func (c *Connection) ObjectTempUrl(container string, objectName string, secretKe
 
 // parseResponseStatus parses string like "200 OK" and returns Error.
 //
-// For status codes beween 200 and 299, this returns nil.
+// For status codes between 200 and 299, this returns nil.
 func parseResponseStatus(resp string, errorMap errorMap) error {
 	code := 0
 	reason := resp

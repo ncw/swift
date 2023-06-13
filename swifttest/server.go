@@ -409,8 +409,6 @@ func (r containerResource) put(a *action) interface{} {
 			header, err := reader.Next()
 			if err == io.EOF {
 				break
-			} else if err != nil {
-				//return location, err
 			}
 			if header == nil {
 				continue
@@ -733,7 +731,7 @@ func (objr objectResource) put(a *action) interface{} {
 		fatalf(400, "TODO", "read error")
 	}
 	gotHash := sum.Sum(nil)
-	if expectHash != nil && bytes.Compare(gotHash, expectHash) != 0 {
+	if expectHash != nil && !bytes.Equal(gotHash, expectHash) {
 		fatalf(422, "Bad ETag", "The ETag you specified did not match what we received")
 	}
 	if a.req.ContentLength >= 0 && int64(len(data)) != a.req.ContentLength {
@@ -876,7 +874,7 @@ func (objr objectResource) copy(a *action) interface{} {
 		fatalf(400, "Bad Request", "Destination must point to a valid object path")
 	}
 
-	if objr2.container.name != objr2.container.name && obj2.name != obj.name {
+	if objr2.container.name != objr.container.name && obj2.name != obj.name {
 		obj2.Lock()
 		defer obj2.Unlock()
 	}
@@ -1083,7 +1081,7 @@ var pathRegexp = regexp.MustCompile("/v1/AUTH_([a-zA-Z0-9]+)(/([^/]+)(/(.*))?)?"
 func (srv *SwiftServer) parseURL(u *url.URL) (account string, container string, object string, err error) {
 	m := pathRegexp.FindStringSubmatch(u.Path)
 	if m == nil {
-		return "", "", "", fmt.Errorf("Couldn't parse the specified URI")
+		return "", "", "", fmt.Errorf("couldn't parse the specified URI")
 	}
 	account = m[1]
 	container = m[3]
@@ -1141,9 +1139,6 @@ func (srv *SwiftServer) resourceForURL(u *url.URL) (r resource) {
 	return objr
 }
 
-// nullResource has error stubs for all resource methods.
-type nullResource struct{}
-
 func notAllowed() interface{} {
 	fatalf(400, "MethodNotAllowed", "The specified method is not allowed against this resource")
 	return nil
@@ -1153,12 +1148,6 @@ func notAuthorized() interface{} {
 	fatalf(401, "Unauthorized", "This server could not verify that you are authorized to access the document you requested.")
 	return nil
 }
-
-func (nullResource) put(a *action) interface{}    { return notAllowed() }
-func (nullResource) get(a *action) interface{}    { return notAllowed() }
-func (nullResource) post(a *action) interface{}   { return notAllowed() }
-func (nullResource) delete(a *action) interface{} { return notAllowed() }
-func (nullResource) copy(a *action) interface{}   { return notAllowed() }
 
 type rootResource struct{}
 
@@ -1301,7 +1290,7 @@ func (r rootResource) delete(a *action) interface{} {
 func (rootResource) copy(a *action) interface{} { return notAllowed() }
 
 func NewSwiftServer(address string) (*SwiftServer, error) {
-	if strings.Index(address, ":") == -1 {
+	if !strings.Contains(address, ":") {
 		address += ":0"
 	}
 	l, err := net.Listen("tcp", address)

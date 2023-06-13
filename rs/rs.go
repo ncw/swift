@@ -23,7 +23,7 @@ func (c *RsConnection) manage(ctx context.Context, p swift.RequestOpts) (resp *h
 			c.cdnUrl = c.Auth.CdnUrl()
 		}
 		if c.cdnUrl == "" {
-			return "", errors.New("The X-CDN-Management-Url does not exist on the authenticated platform")
+			return "", errors.New("the X-CDN-Management-Url does not exist on the authenticated platform")
 		}
 		return c.cdnUrl, nil
 	}

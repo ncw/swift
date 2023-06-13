@@ -29,10 +29,8 @@ func setupTimer(initialTimeout time.Duration) (timer *time.Timer, fired <-chan b
 	started := make(chan bool)
 	go func() {
 		started <- true
-		select {
-		case <-timer.C:
-			firedChan <- true
-		}
+		<-timer.C
+		firedChan <- true
 	}()
 	<-started
 	return timer, firedChan
