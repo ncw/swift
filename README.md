@@ -169,3 +169,4 @@ Contributors
 - timss <timsateroy@gmail.com>
 - Jos Houtman <jos@houtman.it>
 - Paul Collins <paul.collins@canonical.com>
+- Joe Cai <joe.cai@bigcommerce.com>
