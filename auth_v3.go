@@ -14,6 +14,8 @@ const (
 	v3AuthMethodToken                 = "token"
 	v3AuthMethodPassword              = "password"
 	v3AuthMethodApplicationCredential = "application_credential"
+
+	v3AuthTypeOIDCAccessToken = "v3oidcaccesstoken"
 )
 
 // V3 Authentication request
@@ -117,9 +119,44 @@ type v3AuthResponse struct {
 }
 
 type v3Auth struct {
-	Region  string
-	Auth    *v3AuthResponse
-	Headers http.Header
+	Region        string
+	Auth          *v3AuthResponse
+	Headers       http.Header
+	AuthType      string
+	UnscopedToken string
+}
+
+var (
+	// make sure the methods correspond to their signatures
+	_ = AuthRequestGenerator((&v3Auth{}).Request)
+	_ = AuthRequestGenerator((&v3Auth{}).PrelimRequest)
+	_ = AuthResponseHandler((&v3Auth{}).Response)
+	_ = AuthResponseHandler((&v3Auth{}).PrelimResponse)
+)
+
+func (auth *v3Auth) PrelimRequest(ctx context.Context, c *Connection) (*http.Request, error) {
+	if c.AuthUrl != "" && c.IdentityProvider != "" && c.AuthProtocol != "" && c.AccessToken != "" {
+		auth.AuthType = v3AuthTypeOIDCAccessToken
+		url := fmt.Sprintf("%s/OS-FEDERATION/identity_providers/%s/protocols/%s/auth",
+			c.AuthUrl, c.IdentityProvider, c.AuthProtocol)
+		req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+		return req, nil
+	}
+	return nil, nil
+}
+
+func (auth *v3Auth) PrelimResponse(_ context.Context, resp *http.Response) error {
+	if auth.AuthType == v3AuthTypeOIDCAccessToken {
+		auth.UnscopedToken = resp.Header.Get("X-Subject-Token")
+		if auth.UnscopedToken == "" {
+			return fmt.Errorf("No unscoped token")
+		}
+	}
+	return nil
 }
 
 func (auth *v3Auth) Request(ctx context.Context, c *Connection) (*http.Request, error) {
@@ -179,6 +216,9 @@ func (auth *v3Auth) Request(ctx context.Context, c *Connection) (*http.Request, 
 			Secret: c.ApplicationCredentialSecret,
 			User:   user,
 		}
+	} else if auth.UnscopedToken != "" { // from TwoStageAuthenticator
+		v3.Auth.Identity.Methods = []string{v3AuthMethodToken}
+		v3.Auth.Identity.Token = &v3AuthToken{Id: auth.UnscopedToken}
 	} else if c.UserName == "" && c.UserId == "" {
 		v3.Auth.Identity.Methods = []string{v3AuthMethodToken}
 		v3.Auth.Identity.Token = &v3AuthToken{Id: c.ApiKey}
@@ -205,11 +245,13 @@ func (auth *v3Auth) Request(ctx context.Context, c *Connection) (*http.Request, 
 	if v3.Auth.Identity.Methods[0] != v3AuthMethodApplicationCredential {
 		if c.TrustId != "" {
 			v3.Auth.Scope = &v3Scope{Trust: &v3Trust{Id: c.TrustId}}
-		} else if c.TenantId != "" || c.Tenant != "" {
+		} else if c.TenantId != "" || c.Tenant != "" || c.ProjectId != "" {
 
 			v3.Auth.Scope = &v3Scope{Project: &v3Project{}}
 
-			if c.TenantId != "" {
+			if c.ProjectId != "" {
+				v3.Auth.Scope.Project.Id = c.ProjectId
+			} else if c.TenantId != "" {
 				v3.Auth.Scope.Project.Id = c.TenantId
 			} else if c.Tenant != "" {
 				v3.Auth.Scope.Project.Name = c.Tenant
