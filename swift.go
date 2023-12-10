@@ -556,10 +556,12 @@ func (c *Connection) getUrlAndAuthToken(ctx context.Context, targetUrlIn string,
 	c.authLock.Lock()
 	defer c.authLock.Unlock()
 	targetUrlOut = targetUrlIn
-	if !c.authenticated() {
-		err = c.authenticate(ctx)
-		if err != nil {
-			return
+	if !c.authenticated() || targetUrlIn == ""{
+		if !c.authenticated() {
+			err = c.authenticate(ctx)
+			if err != nil {
+				return
+			}	
 		}
 		if OnReAuth != nil {
 			targetUrlOut, err = OnReAuth()
