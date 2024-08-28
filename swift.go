@@ -787,6 +787,18 @@ func (c *Connection) Call(ctx context.Context, targetUrl string, p RequestOpts) 
 			drainAndClose(resp.Body, nil)
 			c.UnAuthenticate()
 			retries--
+			err = AuthorizationFailed
+
+			// Attempt to rewind the body
+			if p.Body != nil {
+				if do, ok := p.Body.(io.Seeker); ok {
+					if _, seekErr := do.Seek(0, io.SeekStart); seekErr != nil {
+						return
+					}
+				} else {
+					return
+				}
+			}
 		} else {
 			break
 		}
