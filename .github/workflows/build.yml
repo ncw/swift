@@ -25,26 +25,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job_name: ['go1.20', 'go1.19', 'go1.18']
+        job_name: ['go1.23', 'go1.22', 'go1.21']
 
         include:
-          - job_name: go1.20
+          - job_name: go1.23
             os: ubuntu-latest
-            go: '1.20.x'
+            go: '1.23.x'
             gotests: true
             integrationtest: true
             check: true
 
-          - job_name: go1.19
+          - job_name: go1.22
             os: ubuntu-latest
-            go: '1.19.x'
+            go: '1.22.x'
             gotests: true
             integrationtest: true
             check: false
 
-          - job_name: go1.18
+          - job_name: go1.21
             os: ubuntu-latest
-            go: '1.18.x'
+            go: '1.21.x'
             gotests: true
             integrationtest: true
             check: false
