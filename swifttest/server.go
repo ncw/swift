@@ -1094,7 +1094,7 @@ func (srv *SwiftServer) resourceForURL(u *url.URL) (r resource) {
 	accountName, containerName, objectName, err := srv.parseURL(u)
 
 	if err != nil {
-		fatalf(404, "InvalidURI", err.Error())
+		fatalf(404, "InvalidURI", "%s", err.Error())
 	}
 
 	srv.RLock()
