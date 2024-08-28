@@ -873,7 +873,7 @@ func TestObjectPutWithReauth(t *testing.T) {
 	c.AuthToken = "expiredtoken"
 
 	r := strings.NewReader(CONTENTS)
-	_, err := c.ObjectPut(ctx, CONTAINER, OBJECT, r, true, "", "text/plain", nil)
+	_, err := c.ObjectPut(ctx, CONTAINER, OBJECT, r, false, "", "text/plain", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
