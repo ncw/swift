@@ -4,7 +4,6 @@ package swift
 
 import (
 	"io"
-	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
@@ -54,7 +53,7 @@ func TestTimeoutReaderNoTimeout(t *testing.T) {
 		cancelled = true
 	}
 	tr := newTimeoutReader(test, 100*time.Millisecond, cancel)
-	b, err := ioutil.ReadAll(tr)
+	b, err := io.ReadAll(tr)
 	if err != nil || string(b) != "AAA" {
 		t.Fatalf("Bad read %s %s", err, b)
 	}
@@ -81,7 +80,7 @@ func TestTimeoutReaderTimeout(t *testing.T) {
 		cancelled = true
 	}
 	tr := newTimeoutReader(test, 10*time.Millisecond, cancel)
-	_, err := ioutil.ReadAll(tr)
+	_, err := io.ReadAll(tr)
 	if err != TimeoutError {
 		t.Fatal("Expecting TimeoutError, got", err)
 	}

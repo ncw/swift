@@ -23,7 +23,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1457,7 +1456,7 @@ func TestObjectOpenSeekEnd(t *testing.T) {
 	}
 
 	// read file and check contents
-	buf, err = ioutil.ReadAll(file)
+	buf, err = io.ReadAll(file)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2191,7 +2190,7 @@ func TestTempUrl(t *testing.T) {
 		t.Fatal("HTTP Error retrieving file from temporary url", resp.StatusCode)
 	} else {
 		var content []byte
-		if content, err = ioutil.ReadAll(resp.Body); err != nil || string(content) != CONTENTS {
+		if content, err = io.ReadAll(resp.Body); err != nil || string(content) != CONTENTS {
 			t.Error("Bad content", err)
 		}
 
@@ -2639,7 +2638,7 @@ func TestDLOConcurrentWrite(t *testing.T) {
 		for j := 0; j < nChunks; j++ {
 			var data []byte
 			var n int
-			data, err = ioutil.ReadAll(io.LimitReader(rand.Reader, chunkSize))
+			data, err = io.ReadAll(io.LimitReader(rand.Reader, chunkSize))
 			if err != nil {
 				t.Fatal(err)
 			}

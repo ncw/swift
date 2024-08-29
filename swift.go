@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"mime"
 	"net/http"
 	"net/url"
@@ -364,7 +363,7 @@ func drainAndClose(rd io.ReadCloser, err *error) {
 		return
 	}
 
-	_, _ = io.Copy(ioutil.Discard, rd)
+	_, _ = io.Copy(io.Discard, rd)
 	cerr := rd.Close()
 	if err != nil && *err == nil {
 		*err = cerr
