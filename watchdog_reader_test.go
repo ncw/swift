@@ -5,7 +5,6 @@ package swift
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"testing"
 	"time"
 )
@@ -16,7 +15,7 @@ func testWatchdogReaderTimeout(t *testing.T, initialTimeout, watchdogTimeout tim
 	test := newTestReader(3, 10*time.Millisecond)
 	timer, firedChan := setupTimer(initialTimeout)
 	wr := newWatchdogReader(test, watchdogTimeout, timer)
-	b, err := ioutil.ReadAll(wr)
+	b, err := io.ReadAll(wr)
 	if err != nil || string(b) != "AAA" {
 		t.Fatalf("Bad read %s %s", err, b)
 	}
@@ -99,7 +98,7 @@ func TestWatchdogReaderOnSlowNetwork(t *testing.T) {
 	timer, firedChan := setupTimer(100 * time.Millisecond)
 	wr := newWatchdogReader(reader, 190*time.Millisecond, timer)
 
-	//use io.ReadFull instead of ioutil.ReadAll here because ReadAll already does
+	//use io.ReadFull instead of io.ReadAll here because ReadAll already does
 	//some chunking that would keep this testcase from failing
 	b := make([]byte, len(byteString))
 	n, err := io.ReadFull(wr, b)
