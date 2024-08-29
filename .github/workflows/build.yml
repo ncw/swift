@@ -55,14 +55,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
-          stable: 'false'
           go-version: ${{ matrix.go }}
 
       - name: Print Go version and environment
@@ -76,9 +75,12 @@ jobs:
           env
 
       - name: Go module cache
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
-          path: ~/go/pkg/mod
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
@@ -101,7 +103,7 @@ jobs:
         if: matrix.integrationtest
 
       - name: Code quality test
-        uses: golangci/golangci-lint-action@v2
+        uses: golangci/golangci-lint-action@v6
         with:
           # Version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
           version: latest
