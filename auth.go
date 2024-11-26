@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+// Method signatures for Authenticator and TwoStageAuthenticator
+type AuthRequestGenerator func(context.Context, *Connection) (*http.Request, error)
+type AuthResponseHandler func(context.Context, *http.Response) error
+
 // Auth defines the operations needed to authenticate with swift
 //
 // This encapsulates the different authentication schemes in use
@@ -25,6 +29,16 @@ type Authenticator interface {
 	Token() string
 	// The CDN url if available
 	CdnUrl() string
+}
+
+// TwoStageAuthenticator is used for authentication using two requests, like with v3oidcaccesstoken
+type TwoStageAuthenticator interface {
+	Authenticator
+
+	// PrelimRequest returns a request if the authenticator needs to do a request before the main auth request
+	PrelimRequest(context.Context, *Connection) (*http.Request, error)
+	// PrelimResponse parses the response to a PrelimRequest
+	PrelimResponse(context.Context, *http.Response) error
 }
 
 // Expireser is an optional interface to read the expiration time of the token

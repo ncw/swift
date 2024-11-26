@@ -117,6 +117,10 @@ type Connection struct {
 	TenantDomain                string            // Name of the tenant's domain (v3 auth only), only needed if it differs from the user domain
 	TenantDomainId              string            // Id of the tenant's domain (v3 auth only), only needed if it differs the from user domain
 	TrustId                     string            // Id of the trust (v3 auth only)
+	AccessToken                 string            // Access token (v3 federated auth only)
+	AuthProtocol                string            // AuthProtocol, e.g. 'openid'  (v3 federated auth only)
+	IdentityProvider            string            // Identity provider (v3 federated auth only)
+	ProjectId                   string            // Id of the project (v3 federated auth only)
 	Transport                   http.RoundTripper `json:"-" xml:"-"` // Optional specialised http.Transport (eg. for Google Appengine)
 	// These are filled in after Authenticate is called as are the defaults for above
 	StorageUrl string
@@ -262,6 +266,10 @@ func (c *Connection) ApplyEnvironment() (err error) {
 		{&c.TrustId, "OS_TRUST_ID"},
 		{&c.StorageUrl, "OS_STORAGE_URL"},
 		{&c.AuthToken, "OS_AUTH_TOKEN"},
+		{&c.AccessToken, "OS_ACCESS_TOKEN"},
+		{&c.AuthProtocol, "OS_PROTOCOL"},
+		{&c.IdentityProvider, "OS_IDENTITY_PROVIDER"},
+		{&c.ProjectId, "OS_PROJECT_ID"},
 		// v1 auth alternatives
 		{&c.ApiKey, "ST_KEY"},
 		{&c.UserName, "ST_USER"},
@@ -476,27 +484,12 @@ func (c *Connection) Authenticate(ctx context.Context) (err error) {
 	return c.authenticate(ctx)
 }
 
-// Internal implementation of Authenticate
-//
-// Call with authLock held
-func (c *Connection) authenticate(ctx context.Context) (err error) {
-	c.setDefaults()
-
-	// Flush the keepalives connection - if we are
-	// re-authenticating then stuff has gone wrong
-	flushKeepaliveConnections(c.Transport)
-
-	if c.Auth == nil {
-		c.Auth, err = newAuth(c)
-		if err != nil {
-			return
-		}
-	}
-
+// executeRequestResponsePair generates an auth request using reqGen and handles the response using reqHandler
+func (c *Connection) executeRequestResponsePair(ctx context.Context, reqGen AuthRequestGenerator, reqHandler AuthResponseHandler) (err error) {
 	retries := 1
 again:
 	var req *http.Request
-	req, err = c.Auth.Request(ctx, c)
+	req, err = reqGen(ctx, c)
 	if err != nil {
 		return
 	}
@@ -524,11 +517,41 @@ again:
 			}
 			return
 		}
-		err = c.Auth.Response(ctx, resp)
+		return reqHandler(ctx, resp)
+	}
+	return
+}
+
+// Internal implementation of Authenticate
+//
+// Call with authLock held
+func (c *Connection) authenticate(ctx context.Context) (err error) {
+	c.setDefaults()
+
+	// Flush the keepalives connection - if we are
+	// re-authenticating then stuff has gone wrong
+	flushKeepaliveConnections(c.Transport)
+
+	if c.Auth == nil {
+		c.Auth, err = newAuth(c)
 		if err != nil {
 			return
 		}
 	}
+
+	// handle optional authentication stage
+	if prelimAuth, needsPrelimReq := c.Auth.(TwoStageAuthenticator); needsPrelimReq {
+		err = c.executeRequestResponsePair(ctx, prelimAuth.PrelimRequest, prelimAuth.PrelimResponse)
+		if err != nil {
+			return
+		}
+	}
+
+	err = c.executeRequestResponsePair(ctx, c.Auth.Request, c.Auth.Response)
+	if err != nil {
+		return
+	}
+
 	if customAuth, isCustom := c.Auth.(CustomEndpointAuthenticator); isCustom && c.EndpointType != "" {
 		c.StorageUrl = customAuth.StorageUrlForEndpoint(c.EndpointType)
 	} else {
