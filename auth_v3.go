@@ -301,3 +301,8 @@ func (auth *v3Auth) Expires() time.Time {
 func (auth *v3Auth) CdnUrl() string {
 	return ""
 }
+
+func (auth *v3Auth) ShouldReattemptAuth() bool {
+	// No point in reattempting the login in case of auth failure, the expected result is the same
+	return false
+}

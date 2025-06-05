@@ -2,3 +2,4 @@
 *.pyc
 test-env*
 junk/
+.idea

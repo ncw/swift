@@ -494,7 +494,8 @@ func (c *Connection) authenticate(ctx context.Context) (err error) {
 		}
 	}
 
-	retries := 1
+	shouldReattempt := c.Auth.ShouldReattemptAuth()
+
 again:
 	var req *http.Request
 	req, err = c.Auth.Request(ctx, c)
@@ -519,8 +520,8 @@ again:
 			// Try again for a limited number of times on
 			// AuthorizationFailed or BadRequest. This allows us
 			// to try some alternate forms of the request
-			if (err == AuthorizationFailed || err == BadRequest) && retries > 0 {
-				retries--
+			if (err == AuthorizationFailed || err == BadRequest) && shouldReattempt {
+				shouldReattempt = false
 				goto again
 			}
 			return

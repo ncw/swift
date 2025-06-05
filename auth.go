@@ -25,6 +25,8 @@ type Authenticator interface {
 	Token() string
 	// The CDN url if available
 	CdnUrl() string
+	// Is there a point in reattempting auth in this scheme?
+	ShouldReattemptAuth() bool
 }
 
 // Expireser is an optional interface to read the expiration time of the token
@@ -128,6 +130,12 @@ func (auth *v1Auth) Token() string {
 // v1 Authentication - read cdn url
 func (auth *v1Auth) CdnUrl() string {
 	return auth.Headers.Get("X-CDN-Management-Url")
+}
+
+// v1 Authentication - should reattempt login
+func (auth *v1Auth) ShouldReattemptAuth() bool {
+	// No point in reattempting the login in case of auth failure, the expected result is the same
+	return false
 }
 
 // ------------------------------------------------------------
@@ -259,6 +267,12 @@ func (auth *v2Auth) Expires() time.Time {
 // v2 Authentication - read cdn url
 func (auth *v2Auth) CdnUrl() string {
 	return auth.endpointUrl("rax:object-cdn", EndpointTypePublic)
+}
+
+// v2 Authentication - should reattempt login
+func (auth *v2Auth) ShouldReattemptAuth() bool {
+	// As part of the Rackspace auth workaround authentication sometimes needs to be retried
+	return true
 }
 
 // ------------------------------------------------------------

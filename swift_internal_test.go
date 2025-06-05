@@ -335,19 +335,34 @@ func TestInternalAuthenticate(t *testing.T) {
 	}
 }
 
-func TestInternalAuthenticateDenied(t *testing.T) {
+func setVersion(version int) {
+	c.AuthVersion = version
+	c.Auth = nil
+}
+
+func TestInternalAuthenticateDeniedv2(t *testing.T) {
 	server.AddCheck(t).Error(400, "Bad request")
 	server.AddCheck(t).Error(401, "DENIED")
 	defer server.Finished()
+	defer setVersion(c.AuthVersion)
+	setVersion(2)
 	c.UnAuthenticate()
 	err := c.Authenticate(context.Background())
 	if err != AuthorizationFailed {
 		t.Fatal("Expecting AuthorizationFailed", err)
 	}
-	// FIXME
-	// if c.Authenticated() {
-	// 	t.Fatal("Expecting not authenticated")
-	// }
+}
+
+func TestInternalAuthenticateDeniedv3(t *testing.T) {
+	server.AddCheck(t).Error(401, "DENIED")
+	defer server.Finished()
+	defer setVersion(c.AuthVersion)
+	setVersion(3)
+	c.UnAuthenticate()
+	err := c.Authenticate(context.Background())
+	if err != AuthorizationFailed {
+		t.Fatal("Expecting AuthorizationFailed", err)
+	}
 }
 
 func TestInternalAuthenticateBad(t *testing.T) {
