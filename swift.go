@@ -131,6 +131,10 @@ type Connection struct {
 	// Workarounds for non-compliant servers that don't always return opts.Limit items per page
 	FetchUntilEmptyPage       bool // Always fetch unless we received an empty page
 	PartialPageFetchThreshold int  // Fetch if the current page is this percentage of opts.Limit
+	// Extra Headers for Continer HEAD reqeust
+	ExtraHeadersForContinerHEAD Headers `json:"-" xml:"-"`
+	// Extra Headers for Object HEAD reqeust
+	ExtraHeadersForObjectHEAD Headers `json:"-" xml:"-"`
 }
 
 // setFromEnv reads the value that param points to (it must be a
@@ -1352,6 +1356,7 @@ func (c *Connection) Container(ctx context.Context, container string) (info Cont
 		Operation:  "HEAD",
 		ErrorMap:   ContainerErrorMap,
 		NoResponse: true,
+		Headers:    c.ExtraHeadersForContinerHEAD,
 	})
 	if err != nil {
 		return
@@ -2146,6 +2151,7 @@ func (c *Connection) objectBase(ctx context.Context, container string, objectNam
 		Operation:  "HEAD",
 		ErrorMap:   objectErrorMap,
 		NoResponse: true,
+		Headers:    c.ExtraHeadersForObjectHEAD,
 	})
 	if err != nil {
 		return
