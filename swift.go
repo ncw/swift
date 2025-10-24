@@ -372,20 +372,61 @@ func drainAndClose(rd io.ReadCloser, err *error) {
 }
 
 // parseHeaders checks a response for errors and translates into
-// standard errors if necessary. If an error is returned, resp.Body
+// standard errors if necessary. If an error message is present in the response body,
+// it will be included in the error. If an error is returned, resp.Body
 // has been drained and closed.
 func (c *Connection) parseHeaders(resp *http.Response, errorMap errorMap) error {
 	if errorMap != nil {
 		if err, ok := errorMap[resp.StatusCode]; ok {
+			err = appendResponseBodyToError(resp, err)
 			drainAndClose(resp.Body, nil)
 			return err
 		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		var err error = newErrorf(resp.StatusCode, "HTTP Error: %d: %s", resp.StatusCode, resp.Status)
+		err = appendResponseBodyToError(resp, err)
 		drainAndClose(resp.Body, nil)
-		return newErrorf(resp.StatusCode, "HTTP Error: %d: %s", resp.StatusCode, resp.Status)
+		return err
 	}
 	return nil
+}
+
+// appendResponseBodyToError tries to append the response body to the error message.
+func appendResponseBodyToError(resp *http.Response, err error) error {
+	if resp == nil || resp.Body == nil || err == nil {
+		return err
+	}
+
+	if resp.Header.Get("Content-Length") == "0" {
+		return err
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		return err
+	}
+
+	lowerCT := strings.ToLower(ct)
+	if !(strings.Contains(lowerCT, "text") ||
+		strings.Contains(lowerCT, "json") ||
+		strings.Contains(lowerCT, "xml") ||
+		strings.Contains(lowerCT, "html") ||
+		strings.Contains(lowerCT, "plain")) {
+		return err
+	}
+
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil || len(body) == 0 {
+		return err
+	}
+
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return err
+	}
+
+	return fmt.Errorf("%w: %s", err, trimmed)
 }
 
 // readHeaders returns a Headers object from the http.Response.
