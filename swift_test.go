@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1207,7 +1208,7 @@ func TestObjectCreate(t *testing.T) {
 	// FIXME: work around bug which produces 503 not 422 for empty corrupted files
 	_, _ = fmt.Fprintf(out, "Sausage")
 	err = out.Close()
-	if err != swift.ObjectCorrupted {
+	if !errors.Is(err, swift.ObjectCorrupted) {
 		t.Error("Expecting object corrupted not", err)
 	}
 }
@@ -1238,7 +1239,7 @@ func TestObjectCreateAbort(t *testing.T) {
 	}
 
 	_, err = c.ObjectGetString(ctx, CONTAINER, OBJECT2)
-	if err != swift.ObjectNotFound {
+	if !errors.Is(err, swift.ObjectNotFound) {
 		t.Errorf("Unexpected error: %#v", err)
 	}
 }
@@ -1989,7 +1990,7 @@ func TestVersionDeleteContent(t *testing.T) {
 	if err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT); err != swift.ObjectNotFound {
+	if err := c.ObjectDelete(ctx, CURRENT_CONTAINER, OBJECT); !errors.Is(err, swift.ObjectNotFound) {
 		t.Fatalf("Expecting Object not found error, got: %v", err)
 	}
 }
@@ -2000,7 +2001,7 @@ func testExistenceAfterDelete(t *testing.T, c *swift.Connection, container, obje
 	ctx := context.Background()
 	for i := 10; i <= 0; i-- {
 		_, _, err := c.Object(ctx, container, object)
-		if err == swift.ObjectNotFound {
+		if errors.Is(err, swift.ObjectNotFound) {
 			break
 		}
 		if i == 0 {
@@ -2020,7 +2021,7 @@ func TestObjectDelete(t *testing.T) {
 	}
 	testExistenceAfterDelete(t, c, CONTAINER, OBJECT)
 	err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
-	if err != swift.ObjectNotFound {
+	if !errors.Is(err, swift.ObjectNotFound) {
 		t.Fatal("Expecting Object not found", err)
 	}
 }
@@ -2030,7 +2031,7 @@ func TestBulkDelete(t *testing.T) {
 	c, rollback := makeConnectionWithContainer(t)
 	defer rollback()
 	result, err := c.BulkDelete(ctx, CONTAINER, []string{OBJECT})
-	if err == swift.Forbidden {
+	if errors.Is(err, swift.Forbidden) {
 		t.Log("Server doesn't support BulkDelete - skipping test")
 		return
 	}
@@ -3237,11 +3238,11 @@ func TestContainerDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = c.ContainerDelete(ctx, CONTAINER)
-	if err != swift.ContainerNotFound {
+	if !errors.Is(err, swift.ContainerNotFound) {
 		t.Fatal("Expecting container not found", err)
 	}
 	_, _, err = c.Container(ctx, CONTAINER)
-	if err != swift.ContainerNotFound {
+	if !errors.Is(err, swift.ContainerNotFound) {
 		t.Fatal("Expecting container not found", err)
 	}
 }
