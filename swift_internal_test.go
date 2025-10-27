@@ -7,6 +7,7 @@ package swift
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -341,7 +342,7 @@ func TestInternalAuthenticateDenied(t *testing.T) {
 	defer server.Finished()
 	c.UnAuthenticate()
 	err := c.Authenticate(context.Background())
-	if err != AuthorizationFailed {
+	if !errors.Is(err, AuthorizationFailed) {
 		t.Fatal("Expecting AuthorizationFailed", err)
 	}
 	// FIXME

@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -560,7 +561,7 @@ again:
 			// Try again for a limited number of times on
 			// AuthorizationFailed or BadRequest. This allows us
 			// to try some alternate forms of the request
-			if (err == AuthorizationFailed || err == BadRequest) && retries > 0 {
+			if (errors.Is(err, AuthorizationFailed) || errors.Is(err, BadRequest)) && retries > 0 {
 				retries--
 				goto again
 			}
