@@ -25,14 +25,15 @@ import (
 )
 
 const (
-	DefaultUserAgent    = "goswift/1.0"         // Default user agent
-	DefaultRetries      = 3                     // Default number of retries on token expiry
-	TimeFormat          = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
-	UploadTar           = "tar"                 // Data format specifier for Connection.BulkUpload().
-	UploadTarGzip       = "tar.gz"              // Data format specifier for Connection.BulkUpload().
-	UploadTarBzip2      = "tar.bz2"             // Data format specifier for Connection.BulkUpload().
-	allContainersLimit  = 10000                 // Number of containers to fetch at once
-	allObjectsChanLimit = 1000                  // Number objects to fetch when fetching to a channel
+	DefaultUserAgent     = "goswift/1.0"         // Default user agent
+	DefaultRetries       = 3                     // Default number of retries on token expiry
+	TimeFormat           = "2006-01-02T15:04:05" // Python date format for json replies parsed as UTC
+	UploadTar            = "tar"                 // Data format specifier for Connection.BulkUpload().
+	UploadTarGzip        = "tar.gz"              // Data format specifier for Connection.BulkUpload().
+	UploadTarBzip2       = "tar.bz2"             // Data format specifier for Connection.BulkUpload().
+	allContainersLimit   = 10000                 // Number of containers to fetch at once
+	allObjectsChanLimit  = 1000                  // Number objects to fetch when fetching to a channel
+	respBodyErrSizeLimit = 1024                  // Maximum size of response body to read when appending to error messages
 )
 
 // ObjectType is the type of the swift object, regular, static large,
@@ -417,12 +418,14 @@ func appendResponseBodyToError(resp *http.Response, err error) error {
 		return err
 	}
 
-	body, readErr := io.ReadAll(resp.Body)
-	if readErr != nil || len(body) == 0 {
+	buf := make([]byte, respBodyErrSizeLimit)
+	limitedReader := io.LimitReader(resp.Body, respBodyErrSizeLimit)
+	n, readErr := limitedReader.Read(buf)
+	if readErr != nil || n == 0 {
 		return err
 	}
 
-	trimmed := strings.TrimSpace(string(body))
+	trimmed := strings.TrimSpace(string(buf[:n]))
 	if trimmed == "" {
 		return err
 	}

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -282,6 +283,84 @@ func TestInternalParseHeaders(t *testing.T) {
 	}
 	if c.parseHeaders(resp, objectErrorMap) != ObjectNotFound {
 		t.Error("Bad 1")
+	}
+}
+
+func TestInternalParseHeadersWithErrorMessageInBody(t *testing.T) {
+	testCases := []struct {
+		name     string
+		resp     *http.Response
+		errMap   map[int]error
+		expected string
+	}{
+		{
+			name: "Container error with body",
+			resp: &http.Response{
+				StatusCode: 400,
+				Header: http.Header{
+					"Content-Type": []string{"text/plain"},
+				},
+				ContentLength: 15,
+				Body:          io.NopCloser(strings.NewReader("Body message")),
+				Status:        "Status message",
+			},
+			errMap:   ContainerErrorMap,
+			expected: "Bad Request: Body message",
+		},
+		{
+			name: "Error with body",
+			resp: &http.Response{
+				StatusCode: 400,
+				Header: http.Header{
+					"Content-Type": []string{"text/plain"},
+				},
+				ContentLength: 15,
+				Body:          io.NopCloser(strings.NewReader("Body message")),
+				Status:        "Status message",
+			},
+			errMap:   nil,
+			expected: "HTTP Error: 400: Status message: Body message",
+		},
+		{
+			name: "Object error with body",
+			resp: &http.Response{
+				StatusCode: 400,
+				Header: http.Header{
+					"Content-Type": []string{"text/plain"},
+				},
+				ContentLength: 15,
+				Body:          io.NopCloser(strings.NewReader("Body message")),
+				Status:        "Status message",
+			},
+			errMap:   objectErrorMap,
+			expected: "Bad Request: Body message",
+		},
+		{
+			name: "Object error with body over 1024 bytes",
+			resp: &http.Response{
+				StatusCode: 400,
+				Header: http.Header{
+					"Content-Type": []string{"text/plain"},
+				},
+				ContentLength: 1025,
+				Body:          io.NopCloser(strings.NewReader(strings.Repeat("a", 1025))),
+				Status:        "Status message",
+			},
+			errMap:   objectErrorMap,
+			expected: fmt.Sprintf("%s: %s", "Bad Request", strings.Repeat("a", 1024)),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := c.parseHeaders(tc.resp, tc.errMap)
+			if err == nil {
+				t.Fatalf("Expected error, got nil")
+			}
+			if err.Error() != tc.expected {
+				t.Errorf("Expected error %q, got %q", tc.expected, err.Error())
+			}
+		})
 	}
 }
 
