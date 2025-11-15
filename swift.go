@@ -7,6 +7,9 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -1953,21 +1956,51 @@ func (c *Connection) ObjectDelete(ctx context.Context, container string, objectN
 	return err
 }
 
-// ObjectTempUrl returns a temporary URL for an object
+// ObjectTempUrl returns a temporary URL for an object using the sha1 hashing function.
+//
+// The cluster must support the sha1 digest.
 func (c *Connection) ObjectTempUrl(container string, objectName string, secretKey string, method string, expires time.Time) string {
+	sig := c.objectTempUrlSignature(container, objectName, secretKey, method, expires, sha1.New)
+	s := hex.EncodeToString(sig)
+
+	return fmt.Sprintf("%s/%s/%s?temp_url_sig=%s&temp_url_expires=%d", c.StorageUrl, container, objectName, s, expires.Unix())
+}
+
+// ObjectTempUrlSha256 returns a temporary URL for an object using the sha256 hashing function.
+//
+// The cluster must support the sha256 digest.
+func (c *Connection) ObjectTempUrlSha256(container string, objectName string, secretKey string, method string, expires time.Time) string {
+	sig := c.objectTempUrlSignature(container, objectName, secretKey, method, expires, sha256.New)
+	s := hex.EncodeToString(sig)
+
+	return fmt.Sprintf("%s/%s/%s?temp_url_sig=%s&temp_url_expires=%d", c.StorageUrl, container, objectName, s, expires.Unix())
+}
+
+// ObjectTempUrlSha512 returns a temporary URL for an object using the sha512 hashing function.
+//
+// The cluster must support the sha512 digest.
+func (c *Connection) ObjectTempUrlSha512(container string, objectName string, secretKey string, method string, expires time.Time) string {
+	sig := c.objectTempUrlSignature(container, objectName, secretKey, method, expires, sha512.New)
+	// The sha512 digest must be encoded using base64.
+	s := base64.RawURLEncoding.EncodeToString(sig)
+
+	return fmt.Sprintf("%s/%s/%s?temp_url_sig=sha512:%s&temp_url_expires=%d", c.StorageUrl, container, objectName, s, expires.Unix())
+}
+
+// objectTempUrlSignature returns a signature for an object using the provided hash function.
+func (c *Connection) objectTempUrlSignature(container string, objectName string, secretKey string, method string, expires time.Time, hash func() hash.Hash) []byte {
 	c.authLock.Lock()
 	storageUrl := c.StorageUrl
 	c.authLock.Unlock()
 	if storageUrl == "" {
-		return "" // Cannot do better without changing the interface
+		return []byte{} // Cannot do better without changing the interface
 	}
 
-	mac := hmac.New(sha1.New, []byte(secretKey))
+	mac := hmac.New(hash, []byte(secretKey))
 	prefix, _ := url.Parse(storageUrl)
 	body := fmt.Sprintf("%s\n%d\n%s/%s/%s", method, expires.Unix(), prefix.Path, container, objectName)
 	mac.Write([]byte(body))
-	sig := hex.EncodeToString(mac.Sum(nil))
-	return fmt.Sprintf("%s/%s/%s?temp_url_sig=%s&temp_url_expires=%d", c.StorageUrl, container, objectName, sig, expires.Unix())
+	return mac.Sum(nil)
 }
 
 // parseResponseStatus parses string like "200 OK" and returns Error.

@@ -2211,6 +2211,130 @@ func TestTempUrl(t *testing.T) {
 	}
 }
 
+func TestTempUrlSha256(t *testing.T) {
+	ctx := context.Background()
+	c, rollback := makeConnectionWithContainer(t)
+	defer rollback()
+	err := c.ObjectPutBytes(ctx, CONTAINER, OBJECT, []byte(CONTENTS), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	m := swift.Metadata{}
+	m["temp-url-key"] = SECRET_KEY
+	err = c.AccountUpdate(ctx, m.AccountHeaders())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expiresTime := time.Now().Add(20 * time.Minute)
+	tempUrl := c.ObjectTempUrlSha256(CONTAINER, OBJECT, SECRET_KEY, "GET", expiresTime)
+
+	resp, err := http.Get(tempUrl)
+	if err != nil {
+		t.Fatal("Failed to retrieve file from temporary url")
+	}
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			t.Error("Close failed", err)
+		}
+	}()
+
+	if resp.StatusCode == 401 {
+		t.Log("Server doesn't support tempurl")
+	} else if resp.StatusCode != 200 {
+		t.Fatal("HTTP Error retrieving file from temporary url", resp.StatusCode)
+	} else {
+		var content []byte
+		if content, err = io.ReadAll(resp.Body); err != nil || string(content) != CONTENTS {
+			t.Error("Bad content", err)
+		}
+
+		resp, err = http.Post(tempUrl, "image/jpeg", bytes.NewReader([]byte(CONTENTS)))
+		if err != nil {
+			t.Fatal("Failed to retrieve file from temporary url")
+		}
+		defer func() {
+			err := resp.Body.Close()
+			if err != nil {
+				t.Error("Close failed", err)
+			}
+		}()
+		if resp.StatusCode != 401 {
+			t.Fatal("Expecting server to forbid access to object")
+		}
+	}
+}
+
+func TestTempUrlSha512(t *testing.T) {
+	ctx := context.Background()
+	c, rollback := makeConnectionWithContainer(t)
+	defer rollback()
+	err := c.ObjectPutBytes(ctx, CONTAINER, OBJECT, []byte(CONTENTS), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = c.ObjectDelete(ctx, CONTAINER, OBJECT)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	m := swift.Metadata{}
+	m["temp-url-key"] = SECRET_KEY
+	err = c.AccountUpdate(ctx, m.AccountHeaders())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expiresTime := time.Now().Add(20 * time.Minute)
+	tempUrl := c.ObjectTempUrlSha256(CONTAINER, OBJECT, SECRET_KEY, "GET", expiresTime)
+
+	resp, err := http.Get(tempUrl)
+	if err != nil {
+		t.Fatal("Failed to retrieve file from temporary url")
+	}
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			t.Error("Close failed", err)
+		}
+	}()
+
+	if resp.StatusCode == 401 {
+		t.Log("Server doesn't support tempurl")
+	} else if resp.StatusCode != 200 {
+		t.Fatal("HTTP Error retrieving file from temporary url", resp.StatusCode)
+	} else {
+		var content []byte
+		if content, err = io.ReadAll(resp.Body); err != nil || string(content) != CONTENTS {
+			t.Error("Bad content", err)
+		}
+
+		resp, err = http.Post(tempUrl, "image/jpeg", bytes.NewReader([]byte(CONTENTS)))
+		if err != nil {
+			t.Fatal("Failed to retrieve file from temporary url")
+		}
+		defer func() {
+			err := resp.Body.Close()
+			if err != nil {
+				t.Error("Close failed", err)
+			}
+		}()
+		if resp.StatusCode != 401 {
+			t.Fatal("Expecting server to forbid access to object")
+		}
+	}
+}
+
 func TestQueryInfo(t *testing.T) {
 	ctx := context.Background()
 	c, rollback := makeConnectionAuth(t)
