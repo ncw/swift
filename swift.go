@@ -1131,7 +1131,20 @@ func (c *Connection) ObjectNames(ctx context.Context, container string, opts *Ob
 	if err != nil {
 		return nil, err
 	}
-	return readLines(resp)
+	switch resp.Header.Get("Content-Type") {
+	case "application/json":
+		var objects []Object
+		err := readJson(resp, &objects)
+
+		var names []string
+		for _, obj := range objects {
+			names = append(names, obj.Name)
+		}
+
+		return names, err
+	default:
+		return readLines(resp)
+	}
 }
 
 // Object contains information about an object
