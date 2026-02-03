@@ -211,6 +211,22 @@ func compareMaps(t *testing.T, a, b map[string]string) {
 	}
 }
 
+// eofReader is used for testing where a reader might return io.EOF on the first read.
+type eofReader struct {
+	reader io.Reader
+}
+
+func (r *eofReader) Read(b []byte) (int, error) {
+	n, err := r.reader.Read(b)
+	if err != nil {
+		return n, err
+	}
+	if n == 0 || n < len(b) {
+		return n, io.EOF
+	}
+	return n, nil
+}
+
 func TestInternalError(t *testing.T) {
 	e := newError(404, "Not Found!")
 	if e.StatusCode != 404 || e.Text != "Not Found!" {
@@ -349,6 +365,20 @@ func TestInternalParseHeadersWithErrorMessageInBody(t *testing.T) {
 			errMap:   objectErrorMap,
 			expected: fmt.Sprintf("%s: %s", "Bad Request", strings.Repeat("a", 1024)),
 		},
+		{
+			name: "Object error with reader that returns EOF right away",
+			resp: &http.Response{
+				StatusCode: 400,
+				Header: http.Header{
+					"Content-Type": []string{"text/plain"},
+				},
+				ContentLength: 15,
+				Body:          io.NopCloser(&eofReader{reader: strings.NewReader("Body message")}),
+				Status:        "Status message",
+			},
+			errMap:   objectErrorMap,
+			expected: "Bad Request: Body message",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -360,10 +390,20 @@ func TestInternalParseHeadersWithErrorMessageInBody(t *testing.T) {
 			if err.Error() != tc.expected {
 				t.Errorf("Expected error %q, got %q", tc.expected, err.Error())
 			}
+			if tc.errMap != nil {
+				expectedInnerErr := tc.errMap[tc.resp.StatusCode]
+				if !errors.Is(err, expectedInnerErr) {
+					assertedErr, ok := err.(*ErrorWithBody)
+					if ok {
+						t.Errorf("Failed to unwrap ErrorWithBody: expected inner error: %q, got %q", expectedInnerErr.Error(), assertedErr.Err.Error())
+					} else {
+						t.Errorf("Failed to unwrap ErrorWithBody: failed to assert error")
+					}
+				}
+			}
 		})
 	}
 }
-
 func TestInternalReadHeaders(t *testing.T) {
 	resp := &http.Response{Header: http.Header{}}
 	compareMaps(t, readHeaders(resp), Headers{})

@@ -303,6 +303,26 @@ func newErrorf(StatusCode int, Text string, Parameters ...interface{}) *Error {
 	return newError(StatusCode, fmt.Sprintf(Text, Parameters...))
 }
 
+type ErrorWithBody struct {
+	Err          *Error
+	ResponseBody string // Original response body
+}
+
+// Error satisfies the error interface.
+func (e *ErrorWithBody) Error() string {
+	if e.Err == nil {
+		return ""
+	}
+	if e.ResponseBody == "" {
+		return e.Err.Error()
+	}
+	return fmt.Sprintf("%s: %s", e.Err.Error(), e.ResponseBody)
+}
+
+func (e *ErrorWithBody) Unwrap() error {
+	return e.Err
+}
+
 // errorMap defines http error codes to error mappings.
 type errorMap map[int]error
 
@@ -421,7 +441,7 @@ func appendResponseBodyToError(resp *http.Response, err error) error {
 	buf := make([]byte, respBodyErrSizeLimit)
 	limitedReader := io.LimitReader(resp.Body, respBodyErrSizeLimit)
 	n, readErr := limitedReader.Read(buf)
-	if readErr != nil || n == 0 {
+	if (readErr != nil && !errors.Is(readErr, io.EOF)) || n == 0 {
 		return err
 	}
 
@@ -430,7 +450,12 @@ func appendResponseBodyToError(resp *http.Response, err error) error {
 		return err
 	}
 
-	return fmt.Errorf("%w: %s", err, trimmed)
+	assertedErr, ok := err.(*Error)
+	if !ok {
+		return err
+	}
+
+	return &ErrorWithBody{Err: assertedErr, ResponseBody: trimmed}
 }
 
 // readHeaders returns a Headers object from the http.Response.
