@@ -1466,6 +1466,60 @@ func TestObjectOpenSeekEnd(t *testing.T) {
 	}
 }
 
+func TestObjectOpenSeekEndPosition(t *testing.T) {
+	ctx := context.Background()
+	c, rollback := makeConnectionWithObject(t)
+	defer rollback()
+	for _, initialRead := range []int{0, 2} {
+		for _, beyond := range []int64{0, 2} {
+			t.Run(fmt.Sprintf("read=%d/beyond=%d", initialRead, beyond), func(t *testing.T) {
+				file, _, err := c.ObjectOpen(ctx, CONTAINER, OBJECT, true, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() {
+					if err := file.Close(); err != nil {
+						t.Error(err)
+					}
+				}()
+				if _, err := io.ReadFull(file, make([]byte, initialRead)); err != nil {
+					t.Fatal(err)
+				}
+				end := CONTENT_SIZE + beyond
+				if pos, err := file.Seek(ctx, beyond, io.SeekEnd); err != nil || pos != end {
+					t.Fatalf("SeekEnd: position=%d err=%v, want %d", pos, err, end)
+				}
+				for _, whence := range []int{io.SeekCurrent, io.SeekStart, io.SeekCurrent} {
+					offset := int64(0)
+					if whence == io.SeekStart {
+						offset = end
+					}
+					if pos, err := file.Seek(ctx, offset, whence); err != nil || pos != end {
+						t.Fatalf("position query/no-op seek: position=%d err=%v, want %d", pos, err, end)
+					}
+					if n, err := file.Read(make([]byte, 1)); n != 0 || err != io.EOF {
+						t.Fatalf("read at end: n=%d err=%v", n, err)
+					}
+				}
+				if pos, err := file.Seek(ctx, -beyond-2, io.SeekCurrent); err != nil || pos != CONTENT_SIZE-2 {
+					t.Fatalf("relative seek back: position=%d err=%v", pos, err)
+				}
+				data, err := io.ReadAll(file)
+				if err != nil || string(data) != CONTENTS[len(CONTENTS)-2:] {
+					t.Fatalf("read after relative seek: data=%q err=%v", data, err)
+				}
+				if pos, err := file.Seek(ctx, 0, io.SeekStart); err != nil || pos != 0 {
+					t.Fatalf("rewind: position=%d err=%v", pos, err)
+				}
+				data, err = io.ReadAll(file)
+				if err != nil || string(data) != CONTENTS {
+					t.Fatalf("read after rewind: data=%q err=%v", data, err)
+				}
+			})
+		}
+	}
+}
+
 func TestObjectUpdate(t *testing.T) {
 	ctx := context.Background()
 	c, rollback := makeConnectionWithObject(t)

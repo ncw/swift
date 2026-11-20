@@ -1750,13 +1750,11 @@ func (file *ObjectOpenFile) Read(p []byte) (n int, err error) {
 // Seek uses HTTP Range headers which, if the file pointer is moved,
 // will involve reopening the HTTP connection.
 //
-// Note that you can't seek to the end of a file or beyond; HTTP Range
-// requests don't support the file pointer being outside the data,
-// unlike os.File
+// Seeking relative to the end of a file can set the position at or beyond
+// the end. Reads then return io.EOF until seeking back into the file.
 //
 // Seek(0, 1) will return the current file pointer.
 func (file *ObjectOpenFile) Seek(ctx context.Context, offset int64, whence int) (newPos int64, err error) {
-	file.overSeeked = false
 	switch whence {
 	case 0: // relative to start
 		newPos = offset
@@ -1768,6 +1766,7 @@ func (file *ObjectOpenFile) Seek(ctx context.Context, offset int64, whence int) 
 		}
 		newPos = file.length + offset
 		if offset >= 0 {
+			file.pos = newPos
 			file.overSeeked = true
 			return
 		}
@@ -1802,6 +1801,7 @@ func (file *ObjectOpenFile) Seek(ctx context.Context, offset int64, whence int) 
 	file.body = newFile.body
 	file.checkHash = false
 	file.pos = newPos
+	file.overSeeked = false
 	return
 }
 
